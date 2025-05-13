@@ -1,25 +1,26 @@
 package main
 
 import (
+	"context"
 	"fmt"
 
-	"github.com/cli/go-gh/v2/pkg/api"
+	"github.com/cli/go-gh/v2"
+	"github.com/google/uuid"
 )
 
 func main() {
-	fmt.Println("hi world, this is the gh-ado-codespaces extension!")
-	client, err := api.DefaultRESTClient()
+	ctx := context.Background()
+	listener, port, err := startServer()
 	if err != nil {
-		fmt.Println(err)
+		fmt.Println("Error starting server:", err)
 		return
 	}
-	response := struct {Login string}{}
-	err = client.Get("user", &response)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	fmt.Printf("running as %s\n", response.Login)
+	defer listener.Close()
+	fmt.Printf("Server started on port %d\n", port)
+	socketId := uuid.New()
+
+	socketPath := "/tmp/ado-auth-" + socketId.String() + ".sock"
+	gh.ExecInteractive(ctx, "cs", "ssh", "--", "-R", fmt.Sprintf("%s:localhost:%d", socketPath, port), "-t")
 }
 
 // For more examples of using go-gh, see:
