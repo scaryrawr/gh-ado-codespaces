@@ -70,6 +70,15 @@ func main() {
 		fmt.Println("Main: Port monitor cleanup complete.")
 	}()
 
+	// Upload auth helpers
+	fmt.Println("Setting up Azure DevOps authentication...")
+	if err := UploadAuthHelpers(ctx, args.CodespaceName); err != nil {
+		fmt.Printf("Warning: Failed to set up auth helpers: %v\n", err)
+		// Continue anyway, as SSH might still work without auth helpers
+	} else {
+		fmt.Println("Azure DevOps authentication setup complete.")
+	}
+
 	// Execute the command
 	fmt.Println("Main: Executing gh codespace ssh command...")
 	// Pass the cancellable context to gh.ExecInteractive
