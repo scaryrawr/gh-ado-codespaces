@@ -10,6 +10,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
+	"github.com/google/uuid"
 )
 
 func startServer() (net.Listener, int, error) {
@@ -115,4 +116,30 @@ func handleConnection(conn net.Conn, cred *azidentity.AzureCLICredential) {
 			fmt.Println("Received unknown message type:", tokenReq.Type)
 		}
 	}
+}
+
+// ServerConfig holds configuration for the local auth server
+type ServerConfig struct {
+	SocketPath string
+	Port       int
+	Listener   net.Listener
+}
+
+// SetupServer initializes the local server and returns its configuration
+func SetupServer(ctx context.Context) (*ServerConfig, error) {
+	listener, port, err := startServer()
+	if err != nil {
+		return nil, fmt.Errorf("error starting server: %w", err)
+	}
+
+	socketId := uuid.New()
+	socketPath := "/tmp/ado-auth-" + socketId.String() + ".sock"
+
+	fmt.Printf("Server started on port %d\n", port)
+
+	return &ServerConfig{
+		SocketPath: socketPath,
+		Port:       port,
+		Listener:   listener,
+	}, nil
 }
