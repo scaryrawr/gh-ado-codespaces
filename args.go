@@ -102,7 +102,10 @@ func (args *CommandLineArgs) BuildGHFlags() []string {
 // BuildSSHArgs builds the arguments for the SSH command
 func (args *CommandLineArgs) BuildSSHArgs(socketPath string, port int) []string {
 	sshArgs := []string{"--"} // Start with the separator
-	sshArgs = append(sshArgs, "-R", fmt.Sprintf("%s:localhost:%d", socketPath, port))
+
+	forwardSpec := fmt.Sprintf("%s:localhost:%d", socketPath, port)
+	sshArgs = append(sshArgs, "-R", forwardSpec)
+
 	sshArgs = append(sshArgs, "-t")
 
 	// Append remaining user-provided arguments (ssh flags or command)

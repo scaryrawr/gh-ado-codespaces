@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
@@ -23,9 +22,8 @@ func main() {
 
 	// Start a goroutine to handle received signals.
 	go func() {
-		sig := <-sigChan
-		fmt.Printf("\\nMain: Received signal: %v. Initiating shutdown...\\n", sig)
-		cancel() // Propagate cancellation through the context.
+		<-sigChan // Just receive the signal, no need to store it
+		cancel()  // Propagate cancellation through the context.
 	}()
 
 	// Parse command line arguments
@@ -34,7 +32,6 @@ func main() {
 	// Setup server for authentication
 	serverConfig, err := SetupServer(ctx)
 	if err != nil {
-		fmt.Println(err)
 		return
 	}
 	defer serverConfig.Listener.Close()
@@ -43,12 +40,10 @@ func main() {
 	if args.CodespaceName == "" {
 		selectedName, err := SelectCodespace(ctx, args.Repo, args.RepoOwner)
 		if err != nil {
-			fmt.Printf("Error selecting codespace: %v\n", err)
 			return
 		}
 		args.CodespaceName = selectedName
 	}
-
 	// Build command line arguments for gh
 	ghFlags := args.BuildGHFlags()
 	sshArgs := args.BuildSSHArgs(serverConfig.SocketPath, serverConfig.Port)
@@ -59,29 +54,19 @@ func main() {
 	// Start the port monitor in the background
 	monitorController, err := StartPortMonitor(ctx, args.CodespaceName)
 	if err != nil {
-		fmt.Printf("Warning: Failed to start port monitor: %v\n", err)
 		return
 	}
 	defer func() {
-		fmt.Println("Main: Signaling port monitor to stop...")
 		monitorController.Stop() // Signal stop
-		fmt.Println("Main: Waiting for port monitor to clean up...")
 		monitorController.Wait() // Wait for cleanup
-		fmt.Println("Main: Port monitor cleanup complete.")
 	}()
 
 	// Upload auth helpers
-	fmt.Println("Setting up Azure DevOps authentication...")
 	if err := UploadAuthHelpers(ctx, args.CodespaceName); err != nil {
-		fmt.Printf("Warning: Failed to set up auth helpers: %v\n", err)
 		// Continue anyway, as SSH might still work without auth helpers
-	} else {
-		fmt.Println("Azure DevOps authentication setup complete.")
 	}
 
 	// Execute the command
-	fmt.Println("Main: Executing gh codespace ssh command...")
 	// Pass the cancellable context to gh.ExecInteractive
 	gh.ExecInteractive(ctx, finalArgs...)
-	fmt.Println("Main: gh.ExecInteractive finished.")
 }
