@@ -7,9 +7,58 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/AlecAivazis/survey/v2"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/cli/go-gh/v2"
 )
+
+type selectionModel struct {
+	choices  []string
+	cursor   int
+	selected int
+	done     bool
+}
+
+func (m selectionModel) Init() tea.Cmd {
+	return nil
+}
+
+func (m selectionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "ctrl+c", "q":
+			return m, tea.Quit
+		case "up", "k":
+			if m.cursor > 0 {
+				m.cursor--
+			}
+		case "down", "j":
+			if m.cursor < len(m.choices)-1 {
+				m.cursor++
+			}
+		case "enter", " ":
+			m.selected = m.cursor
+			m.done = true
+			return m, tea.Quit
+		}
+	}
+	return m, nil
+}
+
+func (m selectionModel) View() string {
+	s := "Choose a codespace:\n\n"
+
+	for i, choice := range m.choices {
+		cursor := " "
+		if m.cursor == i {
+			cursor = ">"
+		}
+		s += fmt.Sprintf("%s %s\n", cursor, choice)
+	}
+
+	s += "\nPress q to quit.\n"
+	return s
+}
 
 // Codespace represents a GitHub Codespace with the fields we need
 type Codespace struct {
@@ -124,22 +173,26 @@ func SelectCodespace(ctx context.Context, repoFilter, ownerFilter string) (strin
 		return codespaces[i].Name < codespaces[j].Name
 	})
 
-	// Create display options for the survey
+	// Create display options for the selection
 	options := make([]string, len(codespaces))
 	for i, cs := range codespaces {
 		options[i] = formatCodespaceListItem(cs)
 	}
 
-	var selectedIndex int
-	prompt := &survey.Select{
-		Message: "Choose a codespace:",
-		Options: options,
+	model := selectionModel{
+		choices: options,
 	}
 
-	err = survey.AskOne(prompt, &selectedIndex)
+	p := tea.NewProgram(model)
+	finalModel, err := p.Run()
 	if err != nil {
 		return "", fmt.Errorf("codespace selection failed: %w", err)
 	}
 
-	return codespaces[selectedIndex].Name, nil
+	result := finalModel.(selectionModel)
+	if !result.done {
+		return "", fmt.Errorf("no codespace selected")
+	}
+
+	return codespaces[result.selected].Name, nil
 }
