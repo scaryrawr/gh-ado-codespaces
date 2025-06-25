@@ -7,7 +7,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/AlecAivazis/survey/v2"
 	"github.com/cli/go-gh/v2"
 )
 
@@ -124,19 +123,13 @@ func SelectCodespace(ctx context.Context, repoFilter, ownerFilter string) (strin
 		return codespaces[i].Name < codespaces[j].Name
 	})
 
-	// Create display options for the survey
+	// Create display options for the selection
 	options := make([]string, len(codespaces))
 	for i, cs := range codespaces {
 		options[i] = formatCodespaceListItem(cs)
 	}
 
-	var selectedIndex int
-	prompt := &survey.Select{
-		Message: "Choose a codespace:",
-		Options: options,
-	}
-
-	err = survey.AskOne(prompt, &selectedIndex)
+	selectedIndex, err := showSelection(options)
 	if err != nil {
 		return "", fmt.Errorf("codespace selection failed: %w", err)
 	}
