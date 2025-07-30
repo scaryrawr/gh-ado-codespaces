@@ -54,7 +54,7 @@ func initAuthLogger() error {
 	authLogger = log.New(authLogFile, "AUTH: ", log.LstdFlags|log.Lmicroseconds)
 	authLogger.Printf("Auth logging initialized to %s", logPath)
 	// Inform user via stderr where logs are, as this is a critical setup step.
-	fmt.Fprintf(os.Stderr, "Azure auth logs will be written to: %s\\n", logPath)
+	// fmt.Fprintf(os.Stderr, "Azure auth logs will be written to: %s\\n", logPath)
 	return nil
 }
 

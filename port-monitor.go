@@ -228,8 +228,8 @@ func StartPortMonitor(ctx context.Context, codespaceName string) (*PortMonitorCo
 	}
 
 	// Print to stderr just once where logs are being written
-	logDir := getLogDirectory()
-	fmt.Fprintf(os.Stderr, "Port monitor logs will be written to: %s\n", logDir)
+	// logDir := getLogDirectory()
+	// fmt.Fprintf(os.Stderr, "Port monitor logs will be written to: %s\n", logDir)
 
 	logDebug("Starting port monitor for codespace: %s", codespaceName)
 

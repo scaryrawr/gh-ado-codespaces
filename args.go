@@ -11,6 +11,7 @@ type CommandLineArgs struct {
 	Config        bool
 	Debug         bool
 	DebugFile     string
+	Logs          bool
 	Profile       string
 	Repo          string
 	RepoOwner     string
@@ -26,6 +27,7 @@ func ParseArgs() CommandLineArgs {
 	debugFlag := flag.Bool("debug", false, "Log debug data to a file")
 	dFlag := flag.Bool("d", false, "Log debug data to a file (shorthand for --debug)")
 	debugFile := flag.String("debug-file", "", "Path of the file log to")
+	logsFlag := flag.Bool("logs", false, "List recent log files and exit")
 	profile := flag.String("profile", "", "Name of the SSH profile to use")
 	repo := flag.String("repo", "", "Filter codespace selection by repository name (user/repo)")
 	RFlag := flag.String("R", "", "Filter codespace selection by repository name (user/repo) (shorthand for --repo)")
@@ -52,6 +54,7 @@ func ParseArgs() CommandLineArgs {
 		Config:        *configFlag,
 		Debug:         actualDebug,
 		DebugFile:     *debugFile,
+		Logs:          *logsFlag,
 		Profile:       *profile,
 		Repo:          actualRepo,
 		RepoOwner:     *repoOwner,
