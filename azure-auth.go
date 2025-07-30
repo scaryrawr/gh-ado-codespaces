@@ -32,17 +32,15 @@ func getAuthLogDirectory() string {
 
 // initAuthLogger initializes a logger that writes to a file for auth operations.
 func initAuthLogger() error {
-	logDir := getAuthLogDirectory()
-	if err := os.MkdirAll(logDir, 0755); err != nil {
+	// Use session-based directory structure
+	if err := ensureSessionLogDirectory(); err != nil {
 		// Cannot use logAuthMessage here as logger is not yet initialized.
 		// Print to Stderr for critical initialization failures.
-		fmt.Fprintf(os.Stderr, "CRITICAL: Failed to create auth log directory '%s': %v\\n", logDir, err)
-		return fmt.Errorf("failed to create auth log directory: %w", err)
+		fmt.Fprintf(os.Stderr, "CRITICAL: Failed to create session log directory: %v\\n", err)
+		return fmt.Errorf("failed to create session log directory: %w", err)
 	}
 
-	timestamp := time.Now().Format("2006-01-02_150405")
-	pid := os.Getpid()
-	logPath := filepath.Join(logDir, fmt.Sprintf("azure-auth-%s-pid%d.log", timestamp, pid))
+	logPath := getSessionLogPath("azure-auth.log")
 
 	var err error
 	authLogFile, err = os.Create(logPath)
