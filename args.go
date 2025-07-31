@@ -16,6 +16,7 @@ type CommandLineArgs struct {
 	Repo          string
 	RepoOwner     string
 	ServerPort    int
+	SkipAzCheck   bool
 	RemainingArgs []string
 }
 
@@ -33,6 +34,7 @@ func ParseArgs() CommandLineArgs {
 	RFlag := flag.String("R", "", "Filter codespace selection by repository name (user/repo) (shorthand for --repo)")
 	repoOwner := flag.String("repo-owner", "", "Filter codespace selection by repository owner (username or org)")
 	serverPort := flag.Int("server-port", 0, "SSH server port number (0 => pick unused)")
+	skipAzCheck := flag.Bool("skip-az-check", false, "Skip Azure CLI availability check (for troubleshooting)")
 
 	flag.Parse()
 
@@ -59,6 +61,7 @@ func ParseArgs() CommandLineArgs {
 		Repo:          actualRepo,
 		RepoOwner:     *repoOwner,
 		ServerPort:    *serverPort,
+		SkipAzCheck:   *skipAzCheck,
 		RemainingArgs: flag.Args(),
 	}
 }

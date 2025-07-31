@@ -124,11 +124,15 @@ func checkAzureCLI() error {
 
 // startServer initializes and starts the local TCP server for authentication.
 // It now takes a context for cancellation.
-func startServer(ctx context.Context) (net.Listener, int, error) {
-	// Check Azure CLI availability before proceeding
-	if err := checkAzureCLI(); err != nil {
-		logAuthMessage("Azure CLI check failed: %v", err)
-		return nil, 0, fmt.Errorf("Azure CLI check failed: %w", err)
+func startServer(ctx context.Context, skipAzCheck bool) (net.Listener, int, error) {
+	// Check Azure CLI availability before proceeding, unless user wants to skip
+	if !skipAzCheck {
+		if err := checkAzureCLI(); err != nil {
+			logAuthMessage("Azure CLI check failed: %v", err)
+			return nil, 0, fmt.Errorf("Azure CLI check failed: %w", err)
+		}
+	} else {
+		logAuthMessage("Skipping Azure CLI check as requested by user")
 	}
 
 	listener, err := net.Listen("tcp", "localhost:0")
@@ -345,14 +349,14 @@ func (sc *ServerConfig) Close() {
 
 // SetupServer initializes the local server and returns its configuration.
 // It now takes a context for cancellation.
-func SetupServer(ctx context.Context) (*ServerConfig, error) {
+func SetupServer(ctx context.Context, skipAzCheck bool) (*ServerConfig, error) {
 	if err := initAuthLogger(); err != nil {
 		// initAuthLogger already prints to Stderr for critical failures.
 		return nil, fmt.Errorf("failed to initialize auth logger: %w", err)
 	}
 
 	logAuthMessage("Attempting to start auth server...")
-	listener, port, err := startServer(ctx) // Pass context
+	listener, port, err := startServer(ctx, skipAzCheck) // Pass context and skip flag
 	if err != nil {
 		logAuthMessage("Error starting server components: %v", err)
 		// Ensure logger is closed if setup fails mid-way
