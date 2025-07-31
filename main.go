@@ -46,6 +46,7 @@ func main() {
 	// Setup server for authentication
 	serverConfig, err := SetupServer(ctx)
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		return
 	}
 	defer serverConfig.Listener.Close()

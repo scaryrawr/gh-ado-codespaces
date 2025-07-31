@@ -8,7 +8,9 @@ import (
 	"log"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -66,9 +68,69 @@ func logAuthMessage(format string, args ...interface{}) {
 	}
 }
 
+// checkAzureCLI verifies that Azure CLI is available and the user is logged in
+func checkAzureCLI() error {
+	// Determine possible Azure CLI command names based on the platform
+	var azCmds []string
+	if runtime.GOOS == "windows" {
+		// On Windows, Azure CLI can be installed as az.cmd, az.exe, or just az
+		azCmds = []string{"az.cmd", "az.exe", "az"}
+	} else {
+		azCmds = []string{"az"}
+	}
+	
+	var lastErr error
+	var azCmd string
+	var output []byte
+	
+	// Try each possible command
+	for _, cmd := range azCmds {
+		logAuthMessage("Checking Azure CLI availability with command: %s", cmd)
+		execCmd := exec.Command(cmd, "--version")
+		var err error
+		output, err = execCmd.Output()
+		if err == nil {
+			azCmd = cmd
+			break
+		}
+		lastErr = err
+		logAuthMessage("Command '%s --version' failed: %v", cmd, err)
+	}
+	
+	if azCmd == "" {
+		logAuthMessage("Azure CLI not found. All attempted commands failed.")
+		var suggestion string
+		if runtime.GOOS == "windows" {
+			suggestion = "On Windows, please install Azure CLI from https://aka.ms/installazurecliwindows and restart your command prompt or PowerShell session."
+		} else {
+			suggestion = "Please install Azure CLI following the instructions at https://docs.microsoft.com/en-us/cli/azure/install-azure-cli"
+		}
+		return fmt.Errorf("Azure CLI is not installed or not in PATH. %s Last error: %w", suggestion, lastErr)
+	}
+	
+	logAuthMessage("Azure CLI found with command '%s': %s", azCmd, strings.TrimSpace(string(output)))
+	
+	// Check if user is logged in
+	cmd := exec.Command(azCmd, "account", "show")
+	_, err := cmd.Output()
+	if err != nil {
+		logAuthMessage("Azure CLI account check failed: %v", err)
+		return fmt.Errorf("Azure CLI is installed but you are not logged in. Please run:\n\n    az login --scope 499b84ac-1321-427f-aa17-267ca6975798/.default\n\nThis will authenticate with the Azure DevOps scope required for this extension.")
+	}
+	
+	logAuthMessage("Azure CLI account check successful")
+	return nil
+}
+
 // startServer initializes and starts the local TCP server for authentication.
 // It now takes a context for cancellation.
 func startServer(ctx context.Context) (net.Listener, int, error) {
+	// Check Azure CLI availability before proceeding
+	if err := checkAzureCLI(); err != nil {
+		logAuthMessage("Azure CLI check failed: %v", err)
+		return nil, 0, fmt.Errorf("Azure CLI check failed: %w", err)
+	}
+
 	listener, err := net.Listen("tcp", "localhost:0")
 	if err != nil {
 		// logAuthMessage already called by SetupServer if this fails
@@ -78,7 +140,7 @@ func startServer(ctx context.Context) (net.Listener, int, error) {
 	cred, err := azidentity.NewAzureCLICredential(nil)
 	if err != nil {
 		listener.Close() // Clean up listener if credential creation fails
-		// logAuthMessage already called by SetupServer
+		logAuthMessage("Failed to create Azure CLI credential: %v", err)
 		return nil, 0, fmt.Errorf("failed to create Azure CLI credential: %w", err)
 	}
 
@@ -132,6 +194,11 @@ type TokenRequest struct {
 type TokenResponse struct {
 	Type string `json:"type"`
 	Data string `json:"data"`
+}
+
+type ErrorResponse struct {
+	Type string `json:"type"`
+	Error string `json:"error"`
 }
 
 // handleConnection processes a single client connection.
@@ -193,6 +260,30 @@ func handleConnection(ctx context.Context, conn net.Conn, cred *azidentity.Azure
 			token, err := cred.GetToken(ctx, policy.TokenRequestOptions{Scopes: scopes}) // Pass context
 			if err != nil {
 				logAuthMessage("Error getting token for %s (scopes %v): %v", clientAddr, scopes, err)
+				
+				// Send error response to client instead of just continuing
+				errorResp := ErrorResponse{
+					Type: "error",
+					Error: fmt.Sprintf("Failed to get access token: %v", err),
+				}
+				
+				errorBytes, jsonErr := json.Marshal(errorResp)
+				if jsonErr != nil {
+					logAuthMessage("Error marshalling error response for %s: %v", clientAddr, jsonErr)
+					continue
+				}
+				
+				_, writeErr := writer.Write(append(errorBytes, '\f'))
+				if writeErr != nil {
+					logAuthMessage("Error writing error response to %s: %v", clientAddr, writeErr)
+					break
+				}
+				flushErr := writer.Flush()
+				if flushErr != nil {
+					logAuthMessage("Error flushing error response for %s: %v", clientAddr, flushErr)
+					break
+				}
+				logAuthMessage("Sent error response to %s", clientAddr)
 				continue
 			}
 
