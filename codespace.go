@@ -49,6 +49,15 @@ func fetchCodespaces(repoFilter, ownerFilter string) ([]Codespace, error) {
 	return codespaces, nil
 }
 
+// ANSI color codes for base16 compatibility
+const (
+	colorReset     = "\033[0m"
+	colorGreen     = "\033[32m" // base16 green for running/available
+	colorYellow    = "\033[33m" // base16 yellow for starting
+	colorRed       = "\033[31m" // base16 red for shutdown
+	colorBrightRed = "\033[91m" // bright red for unknown states
+)
+
 // formatCodespaceListItem formats a codespace for display in the selection prompt
 func formatCodespaceListItem(cs Codespace) string {
 	displayName := cs.DisplayName
@@ -56,19 +65,23 @@ func formatCodespaceListItem(cs Codespace) string {
 		displayName = cs.Name
 	}
 
-	var state string
+	var state, color string
 	switch cs.State {
 	case "Available":
 		state = "✓"
+		color = colorGreen
 	case "Starting":
 		state = "…"
+		color = colorYellow
 	case "Shutdown":
 		state = "⊘"
+		color = colorRed
 	default:
 		state = "?"
+		color = colorBrightRed
 	}
 
-	prefix := state + " " + displayName
+	prefix := color + state + colorReset + " " + color + displayName + colorReset
 
 	var indicators []string
 	if cs.GitStatus.Ahead > 0 {

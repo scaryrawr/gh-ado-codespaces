@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/cli/go-gh/v2"
 )
@@ -25,16 +24,12 @@ var (
 
 // initDebugLogger initializes a debug logger that writes to a file instead of stderr
 func initDebugLogger() error {
-	// Create log directory if it doesn't exist
-	logDir := getLogDirectory()
-	if err := os.MkdirAll(logDir, 0755); err != nil {
-		return fmt.Errorf("failed to create log directory: %w", err)
+	// Use session-based directory structure
+	if err := ensureSessionLogDirectory(); err != nil {
+		return fmt.Errorf("failed to create session log directory: %w", err)
 	}
 
-	// Create log file with timestamp and process ID in name for uniqueness
-	timestamp := time.Now().Format("2006-01-02_150405")
-	pid := os.Getpid()
-	logPath := filepath.Join(logDir, fmt.Sprintf("port-monitor-%s-pid%d.log", timestamp, pid))
+	logPath := getSessionLogPath("port-monitor.log")
 
 	logFile, err := os.Create(logPath)
 	if err != nil {
@@ -228,8 +223,8 @@ func StartPortMonitor(ctx context.Context, codespaceName string) (*PortMonitorCo
 	}
 
 	// Print to stderr just once where logs are being written
-	logDir := getLogDirectory()
-	fmt.Fprintf(os.Stderr, "Port monitor logs will be written to: %s\n", logDir)
+	// logDir := getLogDirectory()
+	// fmt.Fprintf(os.Stderr, "Port monitor logs will be written to: %s\n", logDir)
 
 	logDebug("Starting port monitor for codespace: %s", codespaceName)
 
