@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/google/uuid"
@@ -68,18 +69,11 @@ func logAuthMessage(format string, args ...interface{}) {
 
 // startServer initializes and starts the local TCP server for authentication.
 // It now takes a context for cancellation.
-func startServer(ctx context.Context) (net.Listener, int, error) {
+func startServer(ctx context.Context, cred azcore.TokenCredential) (net.Listener, int, error) {
 	listener, err := net.Listen("tcp", "localhost:0")
 	if err != nil {
 		// logAuthMessage already called by SetupServer if this fails
 		return nil, 0, fmt.Errorf("failed to start local server: %w", err)
-	}
-
-	cred, err := azidentity.NewAzureCLICredential(nil)
-	if err != nil {
-		listener.Close() // Clean up listener if credential creation fails
-		// logAuthMessage already called by SetupServer
-		return nil, 0, fmt.Errorf("failed to create Azure CLI credential: %w", err)
 	}
 
 	port := listener.Addr().(*net.TCPAddr).Port
@@ -136,7 +130,7 @@ type TokenResponse struct {
 
 // handleConnection processes a single client connection.
 // It now takes a context for cancellation.
-func handleConnection(ctx context.Context, conn net.Conn, cred *azidentity.AzureCLICredential) {
+func handleConnection(ctx context.Context, conn net.Conn, cred azcore.TokenCredential) {
 	defer conn.Close()
 	reader := bufio.NewReader(conn)
 	writer := bufio.NewWriter(conn)
@@ -261,7 +255,62 @@ func SetupServer(ctx context.Context) (*ServerConfig, error) {
 	}
 
 	logAuthMessage("Attempting to start auth server...")
-	listener, port, err := startServer(ctx) // Pass context
+
+	var subscription string
+
+	configPath, pathErr := getConfigFilePath()
+	if pathErr != nil {
+		logAuthMessage("Unable to resolve config path: %v", pathErr)
+	} else {
+		logAuthMessage("Looking for config at %s", configPath)
+	}
+
+	cfg, err := LoadAppConfig()
+	if err != nil {
+		logAuthMessage("Failed to load config: %v", err)
+	} else {
+		if configPath != "" {
+			if _, statErr := os.Stat(configPath); statErr == nil {
+				logAuthMessage("Loaded configuration from %s", configPath)
+			} else if os.IsNotExist(statErr) {
+				logAuthMessage("Config file not found; using defaults")
+			} else {
+				logAuthMessage("Unable to stat config file %s: %v", configPath, statErr)
+			}
+		}
+
+		login, loginErr := currentGitHubLogin()
+		if loginErr != nil {
+			logAuthMessage("Unable to determine active GitHub login: %v", loginErr)
+		} else {
+			logAuthMessage("Active GitHub login: %s", login)
+			if sub, ok := cfg.AzureSubscriptionForLogin(login); ok {
+				subscription = sub
+				logAuthMessage("Using Azure subscription override '%s' for login '%s'", subscription, login)
+			} else {
+				logAuthMessage("No Azure subscription override found for login '%s'", login)
+			}
+		}
+	}
+
+	var cred azcore.TokenCredential
+	if strings.TrimSpace(subscription) == "" {
+		cred, err = azidentity.NewAzureCLICredential(nil)
+	} else {
+		logAuthMessage("Creating Azure CLI credential with subscription override %s", subscription)
+		cred, err = azidentity.NewAzureCLICredential(&azidentity.AzureCLICredentialOptions{Subscription: subscription})
+	}
+	if err != nil {
+		logAuthMessage("Error creating Azure credential: %v", err)
+		if authLogFile != nil {
+			authLogFile.Close()
+			authLogFile = nil
+			authLogger = nil
+		}
+		return nil, fmt.Errorf("error creating Azure credential: %w", err)
+	}
+
+	listener, port, err := startServer(ctx, cred) // Pass context
 	if err != nil {
 		logAuthMessage("Error starting server components: %v", err)
 		// Ensure logger is closed if setup fails mid-way

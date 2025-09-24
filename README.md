@@ -55,6 +55,7 @@ Flags:
   --config                   Write OpenSSH configuration to stdout
   --debug, -d                Log debug data to a file
   --debug-file string        Path of the file to log to
+  --azure-subscription-id string  Azure subscription ID to use for authentication (persisted per GitHub account)
   --profile string           Name of the SSH profile to use
   --repo, -R string          Filter codespace selection by repository name (user/repo)
   --repo-owner string        Filter codespace selection by repository owner (username or org)
@@ -66,6 +67,33 @@ You can also pass additional SSH flags after `--`, for example:
 ```fish
 gh ado-codespaces -- -L 3000:localhost:3000
 ```
+
+### Configuration
+
+The extension can read optional configuration values that are scoped per GitHub login. By default it looks for a JSON file at:
+
+```text
+$OS_CONFIG_DIR/gh-ado-codespaces/config.json
+```
+
+Set the `GH_ADO_CODESPACES_CONFIG` environment variable to point at a different file if you prefer a custom location.
+
+The configuration file is a JSON object keyed by GitHub login IDs returned by `gh auth switch`. Each account can provide Azure-specific overrides, such as the subscription to use when acquiring tokens via the Azure CLI:
+
+```json
+{
+  "login-id-1": {},
+  "login-id-2": {
+    "azure": {
+      "subscription": "00000000-0000-0000-0000-000000000000"
+    }
+  }
+}
+```
+
+If a subscription is set, the extension requests tokens from the Azure CLI using that subscription. When no override is present, the Azure CLI's default subscription continues to be used.
+
+You can create or update this setting directly from the command line by supplying the `--azure-subscription-id` flag once. The value will be persisted for the active GitHub login so future invocations do not need the flag unless you want to change or clear it. To clear the stored value, edit the config file and remove (or empty) the `subscription` field for your login.
 
 ## How It Works
 
