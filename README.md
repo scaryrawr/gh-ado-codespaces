@@ -114,6 +114,53 @@ The automatic port forwarding system detects when applications in your codespace
 3. New SSH tunnels are created automatically for each detected port
 4. Applications running in your codespace become accessible via `localhost:<port>` locally
 
+## Testing
+
+This project includes a comprehensive unit test suite that covers:
+
+- **Command line argument parsing and validation** (`args_test.go`)
+  - Azure subscription ID format validation
+  - Command line flag building for `gh codespace ssh`
+  - SSH argument construction
+  
+- **Configuration file handling** (`config_test.go`)
+  - Azure subscription storage and retrieval per GitHub account
+  - JSON configuration file loading and saving
+  - Error handling for malformed configuration files
+
+- **Utility functions** (`main_test.go`)
+  - Filename sanitization for session directories  
+  - Session ID generation and formatting
+  - File size formatting for log file listings
+
+- **Codespace operations** (`codespace_test.go`)
+  - Codespace list item formatting with colors and status indicators
+  - Git status indicators (ahead commits, uncommitted/unpushed changes)
+  - Codespace sorting by availability status
+
+- **GitHub integration** (`github_login_test.go`)
+  - GitHub CLI authentication integration tests
+  - GitHub username validation
+
+### Running Tests
+
+Run all tests:
+```bash
+go test -v ./...
+```
+
+Run tests with race detection:
+```bash
+go test -v -race ./...
+```
+
+Run only fast unit tests (skip integration tests):
+```bash
+go test -short -v ./...
+```
+
+The test suite maintains compatibility with the existing CI/CD pipeline and ensures all functionality works correctly without external dependencies in most cases.
+
 ## Limitations
 
 - Authentication is tied to your local Azure CLI session
