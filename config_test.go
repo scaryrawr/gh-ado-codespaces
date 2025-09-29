@@ -135,9 +135,9 @@ func TestAppConfig_SetAzureSubscriptionForLogin(t *testing.T) {
 			wantConfig:   AppConfig{},
 		},
 		{
-			name:   "set subscription for new user",
-			config: AppConfig{},
-			login:  "user1",
+			name:         "set subscription for new user",
+			config:       AppConfig{},
+			login:        "user1",
 			subscription: "sub123",
 			wantConfig: AppConfig{
 				"user1": AccountConfig{
@@ -237,14 +237,14 @@ func TestAppConfig_SetAzureSubscriptionForLogin(t *testing.T) {
 				}
 
 				if (gotAccount.Azure == nil) != (wantAccount.Azure == nil) {
-					t.Errorf("Azure config mismatch for login %s: got nil=%v, want nil=%v", 
+					t.Errorf("Azure config mismatch for login %s: got nil=%v, want nil=%v",
 						login, gotAccount.Azure == nil, wantAccount.Azure == nil)
 					continue
 				}
 
 				if gotAccount.Azure != nil && wantAccount.Azure != nil {
 					if gotAccount.Azure.Subscription != wantAccount.Azure.Subscription {
-						t.Errorf("Subscription mismatch for login %s: got %s, want %s", 
+						t.Errorf("Subscription mismatch for login %s: got %s, want %s",
 							login, gotAccount.Azure.Subscription, wantAccount.Azure.Subscription)
 					}
 				}
@@ -256,7 +256,7 @@ func TestAppConfig_SetAzureSubscriptionForLogin(t *testing.T) {
 func TestLoadAppConfig(t *testing.T) {
 	// Create a temporary directory for test config files
 	tempDir := t.TempDir()
-	
+
 	tests := []struct {
 		name        string
 		configPath  string
@@ -270,16 +270,16 @@ func TestLoadAppConfig(t *testing.T) {
 			expected:   AppConfig{},
 		},
 		{
-			name:        "empty file",
-			configPath:  filepath.Join(tempDir, "empty.json"),
-			configData:  "",
-			expected:    AppConfig{},
+			name:       "empty file",
+			configPath: filepath.Join(tempDir, "empty.json"),
+			configData: "",
+			expected:   AppConfig{},
 		},
 		{
-			name:        "whitespace only file",
-			configPath:  filepath.Join(tempDir, "whitespace.json"),
-			configData:  "   \n\t  ",
-			expected:    AppConfig{},
+			name:       "whitespace only file",
+			configPath: filepath.Join(tempDir, "whitespace.json"),
+			configData: "   \n\t  ",
+			expected:   AppConfig{},
 		},
 		{
 			name:       "valid config",

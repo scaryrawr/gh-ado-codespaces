@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
-	"strings"
+	"time"
 
 	"github.com/cli/go-gh/v2"
 )
@@ -22,12 +22,13 @@ type Codespace struct {
 		HasUnpushedChanges    bool   `json:"hasUnpushedChanges"`
 		Ref                   string `json:"ref"`
 	} `json:"gitStatus"`
-	State string `json:"state"`
+	State      string    `json:"state"`
+	LastUsedAt time.Time `json:"lastUsedAt"`
 }
 
 // fetchCodespaces gets the list of available codespaces using gh cs list
 func fetchCodespaces(repoFilter, ownerFilter string) ([]Codespace, error) {
-	args := []string{"codespace", "list", "--json", "name,displayName,repository,gitStatus,state"}
+	args := []string{"codespace", "list", "--json", "name,displayName,repository,gitStatus,state,lastUsedAt"}
 
 	if repoFilter != "" {
 		args = append(args, "--repo", repoFilter)
@@ -58,6 +59,44 @@ const (
 	colorBrightRed = "\033[91m" // bright red for unknown states
 )
 
+// formatTimeAgo formats time relative to now for recent times, or absolute date for older times
+func formatTimeAgo(t time.Time) string {
+	if t.IsZero() {
+		return "never"
+	}
+
+	now := time.Now()
+	duration := now.Sub(t)
+	// If less than a week, show relative time
+	if duration < 7*24*time.Hour {
+		switch {
+		case duration < time.Minute:
+			return "just now"
+		case duration < time.Hour:
+			minutes := int(duration.Minutes())
+			if minutes == 1 {
+				return "1 minute ago"
+			}
+			return fmt.Sprintf("%d minutes ago", minutes)
+		case duration < 24*time.Hour:
+			hours := int(duration.Hours())
+			if hours == 1 {
+				return "1 hour ago"
+			}
+			return fmt.Sprintf("%d hours ago", hours)
+		default:
+			days := int(duration.Hours() / 24)
+			if days == 1 {
+				return "1 day ago"
+			}
+			return fmt.Sprintf("%d days ago", days)
+		}
+	}
+
+	// If more than a week, show the date
+	return t.Format("Jan 2, 2006")
+}
+
 // formatCodespaceListItem formats a codespace for display in the selection prompt
 func formatCodespaceListItem(cs Codespace) string {
 	displayName := cs.DisplayName
@@ -82,24 +121,9 @@ func formatCodespaceListItem(cs Codespace) string {
 	}
 
 	prefix := color + state + colorReset + " " + color + displayName + colorReset
+	timeAgo := formatTimeAgo(cs.LastUsedAt)
 
-	var indicators []string
-	if cs.GitStatus.Ahead > 0 {
-		indicators = append(indicators, fmt.Sprintf("+%d", cs.GitStatus.Ahead))
-	}
-	if cs.GitStatus.HasUncommittedChanges {
-		indicators = append(indicators, "uncommitted changes")
-	}
-	if cs.GitStatus.HasUnpushedChanges {
-		indicators = append(indicators, "unpushed changes")
-	}
-
-	suffix := cs.Repository
-	if len(indicators) > 0 {
-		suffix = fmt.Sprintf("%s (%s)", suffix, strings.Join(indicators, ", "))
-	}
-
-	return fmt.Sprintf("%s - %s", prefix, suffix)
+	return fmt.Sprintf("%s - %s (last used %s)", prefix, cs.Repository, timeAgo)
 }
 
 // SelectCodespace prompts the user to select a codespace from a list
