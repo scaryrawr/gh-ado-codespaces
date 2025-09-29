@@ -132,14 +132,14 @@ func TestFormatCodespaceListItem(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := formatCodespaceListItem(tt.codespace)
-			
+
 			// Check that all expected parts are present in the output
 			for _, expected := range tt.expected {
 				if !containsSubstring(result, expected) {
 					t.Errorf("formatCodespaceListItem() result missing %q\nGot: %q", expected, result)
 				}
 			}
-			
+
 			// Check that the result is not empty
 			if result == "" {
 				t.Error("formatCodespaceListItem() returned empty string")
@@ -150,7 +150,7 @@ func TestFormatCodespaceListItem(t *testing.T) {
 
 func TestFormatTimeAgo(t *testing.T) {
 	now := time.Now()
-	
+
 	tests := []struct {
 		name     string
 		time     time.Time
@@ -229,24 +229,24 @@ func TestCodespaceSorting(t *testing.T) {
 		"Available": 0,
 		"Starting":  1,
 	}
-	
+
 	// Sort codespaces like in SelectCodespace
 	sortedCodespaces := make([]Codespace, len(codespaces))
 	copy(sortedCodespaces, codespaces)
-	
+
 	// Simple bubble sort to replicate the sorting logic
 	for i := 0; i < len(sortedCodespaces); i++ {
 		for j := i + 1; j < len(sortedCodespaces); j++ {
 			iOrder, iExists := stateOrder[sortedCodespaces[i].State]
 			jOrder, jExists := stateOrder[sortedCodespaces[j].State]
-			
+
 			if !iExists {
 				iOrder = 99
 			}
 			if !jExists {
 				jOrder = 99
 			}
-			
+
 			// Sort by state order first, then by name
 			if iOrder > jOrder || (iOrder == jOrder && sortedCodespaces[i].Name > sortedCodespaces[j].Name) {
 				// Swap
@@ -257,11 +257,11 @@ func TestCodespaceSorting(t *testing.T) {
 
 	// Verify sorting results
 	expectedOrder := []string{"Available", "Available", "Starting", "Starting", "Shutdown", "Unknown"}
-	
+
 	if len(sortedCodespaces) != len(expectedOrder) {
 		t.Fatalf("Expected %d codespaces, got %d", len(expectedOrder), len(sortedCodespaces))
 	}
-	
+
 	for i, expected := range expectedOrder {
 		if sortedCodespaces[i].State != expected {
 			t.Errorf("Position %d: expected state %q, got %q", i, expected, sortedCodespaces[i].State)
@@ -271,9 +271,9 @@ func TestCodespaceSorting(t *testing.T) {
 
 func TestCodespace_StateRepresentation(t *testing.T) {
 	tests := []struct {
-		state            string
-		expectedSymbol   string
-		shouldHaveColor  bool
+		state           string
+		expectedSymbol  string
+		shouldHaveColor bool
 	}{
 		{
 			state:           "Available",
@@ -310,13 +310,13 @@ func TestCodespace_StateRepresentation(t *testing.T) {
 				Repository:  "test/repo",
 				State:       tt.state,
 			}
-			
+
 			result := formatCodespaceListItem(cs)
-			
+
 			if !containsSubstring(result, tt.expectedSymbol) {
 				t.Errorf("Expected symbol %q not found in result: %q", tt.expectedSymbol, result)
 			}
-			
+
 			// Check for ANSI color codes if expected
 			if tt.shouldHaveColor {
 				hasColorCode := containsSubstring(result, "\033[")
@@ -351,7 +351,7 @@ func createTestCodespace(name, displayName, repo, state string, ahead int, uncom
 
 func TestCreateTestCodespace(t *testing.T) {
 	cs := createTestCodespace("test", "Test Codespace", "user/repo", "Available", 5, true, false)
-	
+
 	if cs.Name != "test" {
 		t.Errorf("Expected name 'test', got %q", cs.Name)
 	}

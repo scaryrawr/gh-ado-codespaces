@@ -67,7 +67,6 @@ func formatTimeAgo(t time.Time) string {
 
 	now := time.Now()
 	duration := now.Sub(t)
-	
 	// If less than a week, show relative time
 	if duration < 7*24*time.Hour {
 		switch {
@@ -93,7 +92,7 @@ func formatTimeAgo(t time.Time) string {
 			return fmt.Sprintf("%d days ago", days)
 		}
 	}
-	
+
 	// If more than a week, show the date
 	return t.Format("Jan 2, 2006")
 }

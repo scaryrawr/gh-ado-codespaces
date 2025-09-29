@@ -114,23 +114,23 @@ func TestSanitizeForFilename(t *testing.T) {
 
 func TestInitializeSessionID(t *testing.T) {
 	tests := []struct {
-		name          string
-		codespaceName string
+		name           string
+		codespaceName  string
 		expectContains []string
 	}{
 		{
-			name:          "normal codespace name",
-			codespaceName: "my-codespace",
+			name:           "normal codespace name",
+			codespaceName:  "my-codespace",
 			expectContains: []string{"my-codespace", "session", "pid"},
 		},
 		{
-			name:          "empty codespace name",
-			codespaceName: "",
+			name:           "empty codespace name",
+			codespaceName:  "",
 			expectContains: []string{"unknown-codespace", "session", "pid"},
 		},
 		{
-			name:          "problematic codespace name",
-			codespaceName: "my/codespace\\with:problems",
+			name:           "problematic codespace name",
+			codespaceName:  "my/codespace\\with:problems",
 			expectContains: []string{"my-codespace-with-problems", "session", "pid"},
 		},
 	}
@@ -139,20 +139,20 @@ func TestInitializeSessionID(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Clear global sessionID
 			sessionID = ""
-			
+
 			initializeSessionID(tt.codespaceName)
-			
+
 			if sessionID == "" {
 				t.Error("sessionID should not be empty after initialization")
 			}
-			
+
 			// Check that expected components are present
 			for _, expected := range tt.expectContains {
 				if !containsSubstring(sessionID, expected) {
 					t.Errorf("sessionID %q should contain %q", sessionID, expected)
 				}
 			}
-			
+
 			// Check format roughly matches expected pattern
 			if len(sessionID) < 20 { // Should be longer than this due to timestamp and PID
 				t.Errorf("sessionID %q seems too short", sessionID)
@@ -163,15 +163,15 @@ func TestInitializeSessionID(t *testing.T) {
 
 // Helper function since strings.Contains might not be available in test context
 func containsSubstring(s, substr string) bool {
-	return len(s) >= len(substr) && 
-		   func() bool {
-			   for i := 0; i <= len(s)-len(substr); i++ {
-				   if s[i:i+len(substr)] == substr {
-					   return true
-				   }
-			   }
-			   return false
-		   }()
+	return len(s) >= len(substr) &&
+		func() bool {
+			for i := 0; i <= len(s)-len(substr); i++ {
+				if s[i:i+len(substr)] == substr {
+					return true
+				}
+			}
+			return false
+		}()
 }
 
 func TestFormatFileSize(t *testing.T) {
