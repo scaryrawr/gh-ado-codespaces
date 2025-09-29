@@ -53,9 +53,6 @@ func main() {
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: failed to load config for persisting Azure subscription: %v\n", err)
 			} else {
-				if cfg == nil { // defensive; LoadAppConfig never returns nil map unless error
-					cfg = AppConfig{}
-				}
 				cfg.SetAzureSubscriptionForLogin(login, args.AzureSubscriptionId)
 				if err := SaveAppConfig(cfg); err != nil {
 					fmt.Fprintf(os.Stderr, "Warning: failed to save Azure subscription to config: %v\n", err)

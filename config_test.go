@@ -118,7 +118,7 @@ func TestAppConfig_SetAzureSubscriptionForLogin(t *testing.T) {
 			config:       nil,
 			login:        "user1",
 			subscription: "sub123",
-			wantConfig:   nil,
+			wantConfig:   nil, // Should remain nil, function should not panic
 		},
 		{
 			name:         "empty login",
@@ -177,13 +177,7 @@ func TestAppConfig_SetAzureSubscriptionForLogin(t *testing.T) {
 			},
 			login:        "user1",
 			subscription: "",
-			wantConfig: AppConfig{
-				"user1": AccountConfig{
-					Azure: &AzureConfig{
-						Subscription: "",
-					},
-				},
-			},
+			wantConfig:   AppConfig{}, // Entry should be removed entirely
 		},
 		{
 			name: "clear subscription with whitespace",
@@ -196,13 +190,7 @@ func TestAppConfig_SetAzureSubscriptionForLogin(t *testing.T) {
 			},
 			login:        "user1",
 			subscription: "   ",
-			wantConfig: AppConfig{
-				"user1": AccountConfig{
-					Azure: &AzureConfig{
-						Subscription: "",
-					},
-				},
-			},
+			wantConfig:   AppConfig{}, // Entry should be removed entirely
 		},
 		{
 			name: "set subscription for user with no azure config",

@@ -98,10 +98,13 @@ func (c AppConfig) SetAzureSubscriptionForLogin(login, subscription string) {
 	if sub == "" {
 		// Clear existing if present
 		if acct, ok := c[login]; ok {
-			if acct.Azure != nil {
-				acct.Azure.Subscription = ""
+			acct.Azure = nil
+			// If AccountConfig is now empty, remove the login entry entirely
+			if acct.Azure == nil {
+				delete(c, login)
+			} else {
+				c[login] = acct
 			}
-			c[login] = acct
 		}
 		return
 	}
