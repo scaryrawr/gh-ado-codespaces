@@ -3,20 +3,22 @@ package main
 import (
 	"flag"
 	"fmt"
+	"strings"
 )
 
 // CommandLineArgs holds all the command line arguments
 type CommandLineArgs struct {
-	CodespaceName string
-	Config        bool
-	Debug         bool
-	DebugFile     string
-	Logs          bool
-	Profile       string
-	Repo          string
-	RepoOwner     string
-	ServerPort    int
-	RemainingArgs []string
+	CodespaceName       string
+	Config              bool
+	Debug               bool
+	DebugFile           string
+	AzureSubscriptionId string
+	Logs                bool
+	Profile             string
+	Repo                string
+	RepoOwner           string
+	ServerPort          int
+	RemainingArgs       []string
 }
 
 // ParseArgs parses command line arguments and returns a CommandLineArgs struct
@@ -28,6 +30,9 @@ func ParseArgs() CommandLineArgs {
 	dFlag := flag.Bool("d", false, "Log debug data to a file (shorthand for --debug)")
 	debugFile := flag.String("debug-file", "", "Path of the file log to")
 	logsFlag := flag.Bool("logs", false, "List recent log files and exit")
+	azureSub := flag.String("azure-subscription-id", "", "Azure subscription ID to use for authentication (persisted per GitHub account)")
+	// Allow an alternate flag name without -id suffix for convenience
+	azureSubAlt := flag.String("azure-subscription", "", "Azure subscription ID to use for authentication (alias of --azure-subscription-id)")
 	profile := flag.String("profile", "", "Name of the SSH profile to use")
 	repo := flag.String("repo", "", "Filter codespace selection by repository name (user/repo)")
 	RFlag := flag.String("R", "", "Filter codespace selection by repository name (user/repo) (shorthand for --repo)")
@@ -49,17 +54,24 @@ func ParseArgs() CommandLineArgs {
 
 	actualDebug := *debugFlag || *dFlag
 
+	// Resolve azure subscription flag precedence (primary then alias)
+	actualAzureSub := *azureSub
+	if actualAzureSub == "" && *azureSubAlt != "" {
+		actualAzureSub = *azureSubAlt
+	}
+
 	return CommandLineArgs{
-		CodespaceName: actualCodespaceName,
-		Config:        *configFlag,
-		Debug:         actualDebug,
-		DebugFile:     *debugFile,
-		Logs:          *logsFlag,
-		Profile:       *profile,
-		Repo:          actualRepo,
-		RepoOwner:     *repoOwner,
-		ServerPort:    *serverPort,
-		RemainingArgs: flag.Args(),
+		CodespaceName:       actualCodespaceName,
+		Config:              *configFlag,
+		Debug:               actualDebug,
+		DebugFile:           *debugFile,
+		AzureSubscriptionId: strings.TrimSpace(actualAzureSub),
+		Logs:                *logsFlag,
+		Profile:             *profile,
+		Repo:                actualRepo,
+		RepoOwner:           *repoOwner,
+		ServerPort:          *serverPort,
+		RemainingArgs:       flag.Args(),
 	}
 }
 

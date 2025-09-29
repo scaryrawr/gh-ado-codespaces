@@ -43,6 +43,26 @@ func main() {
 		return
 	}
 
+	// Persist Azure subscription ID override early so subsequent auth setup sees it.
+	if args.AzureSubscriptionId != "" {
+		login, err := currentGitHubLogin()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: unable to determine GitHub login to store Azure subscription: %v\n", err)
+		} else {
+			cfg, err := LoadAppConfig()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to load config for persisting Azure subscription: %v\n", err)
+			} else {
+				cfg.SetAzureSubscriptionForLogin(login, args.AzureSubscriptionId)
+				if err := SaveAppConfig(cfg); err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: failed to save Azure subscription to config: %v\n", err)
+				} else {
+					fmt.Fprintf(os.Stderr, "Stored Azure subscription ID for login '%s' in config.\n", login)
+				}
+			}
+		}
+	}
+
 	// Setup server for authentication
 	serverConfig, err := SetupServer(ctx)
 	if err != nil {
