@@ -137,7 +137,7 @@ func SelectCodespace(ctx context.Context, repoFilter, ownerFilter string) (strin
 		return "", fmt.Errorf("no codespaces found")
 	}
 
-	// Sort codespaces: Available first, then Starting, then others
+	// Sort codespaces: Available first, then Starting, then others; within each group by most recently used
 	sort.Slice(codespaces, func(i, j int) bool {
 		stateOrder := map[string]int{
 			"Available": 0,
@@ -157,7 +157,8 @@ func SelectCodespace(ctx context.Context, repoFilter, ownerFilter string) (strin
 			return iOrder < jOrder
 		}
 
-		return codespaces[i].Name < codespaces[j].Name
+		// Within the same state, sort by most recently used (descending)
+		return codespaces[i].LastUsedAt.After(codespaces[j].LastUsedAt)
 	})
 
 	// Create display options for the selection
