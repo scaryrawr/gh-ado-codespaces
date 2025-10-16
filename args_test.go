@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"testing"
 )
@@ -100,18 +101,12 @@ func TestCommandLineArgs_BuildSSHArgs(t *testing.T) {
 		args       CommandLineArgs
 		socketPath string
 		port       int
-		expected   []string
 	}{
 		{
 			name:       "basic SSH args",
 			args:       CommandLineArgs{},
 			socketPath: "/tmp/socket",
 			port:       8080,
-			expected: []string{
-				"--",
-				"-R", "/tmp/socket:localhost:8080",
-				"-t",
-			},
 		},
 		{
 			name: "with remaining args",
@@ -120,29 +115,67 @@ func TestCommandLineArgs_BuildSSHArgs(t *testing.T) {
 			},
 			socketPath: "/tmp/socket",
 			port:       9090,
-			expected: []string{
-				"--",
-				"-R", "/tmp/socket:localhost:9090",
-				"-t",
-				"echo", "hello",
-			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := tt.args.BuildSSHArgs(tt.socketPath, tt.port)
-			if len(result) != len(tt.expected) {
-				t.Errorf("BuildSSHArgs() returned %d items, expected %d", len(result), len(tt.expected))
-				t.Errorf("Got: %v", result)
-				t.Errorf("Expected: %v", tt.expected)
+			
+			// Check that result starts with "--"
+			if len(result) < 1 || result[0] != "--" {
+				t.Errorf("BuildSSHArgs() should start with '--', got %v", result)
 				return
 			}
-			for i, item := range result {
-				if item != tt.expected[i] {
-					t.Errorf("BuildSSHArgs()[%d] = %q, want %q", i, item, tt.expected[i])
+			
+			// Check that the socket forward is present
+			foundSocketForward := false
+			expectedSocketForward := tt.socketPath + ":localhost:" + fmt.Sprint(tt.port)
+			for i := 0; i < len(result)-1; i++ {
+				if result[i] == "-R" && result[i+1] == expectedSocketForward {
+					foundSocketForward = true
+					break
 				}
 			}
+			if !foundSocketForward {
+				t.Errorf("BuildSSHArgs() should contain '-R %s', got %v", expectedSocketForward, result)
+			}
+			
+			// Check that -t flag is present
+			foundT := false
+			for _, arg := range result {
+				if arg == "-t" {
+					foundT = true
+					break
+				}
+			}
+			if !foundT {
+				t.Errorf("BuildSSHArgs() should contain '-t' flag, got %v", result)
+			}
+			
+			// Check that remaining args are included
+			if len(tt.args.RemainingArgs) > 0 {
+				foundRemainingArgs := true
+				for _, expectedArg := range tt.args.RemainingArgs {
+					found := false
+					for _, actualArg := range result {
+						if actualArg == expectedArg {
+							found = true
+							break
+						}
+					}
+					if !found {
+						foundRemainingArgs = false
+						break
+					}
+				}
+				if !foundRemainingArgs {
+					t.Errorf("BuildSSHArgs() should contain remaining args %v, got %v", tt.args.RemainingArgs, result)
+				}
+			}
+			
+			// Note: Reverse port forwarding is tested in port_test.go
+			// We just verify the structure here since the actual forwards depend on runtime port availability
 		})
 	}
 }

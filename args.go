@@ -118,8 +118,17 @@ func (args *CommandLineArgs) BuildGHFlags() []string {
 func (args *CommandLineArgs) BuildSSHArgs(socketPath string, port int) []string {
 	sshArgs := []string{"--"} // Start with the separator
 
+	// Add the auth socket forward
 	forwardSpec := fmt.Sprintf("%s:localhost:%d", socketPath, port)
 	sshArgs = append(sshArgs, "-R", forwardSpec)
+
+	// Detect and add reverse port forwards for local AI services
+	boundForwards := GetBoundReverseForwards()
+	if len(boundForwards) > 0 {
+		LogReverseForwards(boundForwards)
+		reverseArgs := BuildReverseForwardArgs(boundForwards)
+		sshArgs = append(sshArgs, reverseArgs...)
+	}
 
 	sshArgs = append(sshArgs, "-t")
 
