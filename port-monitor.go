@@ -163,8 +163,13 @@ func StartPortMonitor(ctx context.Context, codespaceName string) (*PortMonitorCo
 
 // runPortMonitor handles the actual port monitoring logic
 func runPortMonitor(ctx context.Context, codespaceName string) error {
-	// The script has already been uploaded and made executable by uploadAndPrepareScripts
-	// Just run the script and process its output
+	// Upload and prepare the port monitor script
+	err := uploadPortMonitorScript(ctx, codespaceName)
+	if err != nil {
+		return fmt.Errorf("failed to upload port monitor script: %w", err)
+	}
+
+	// Run the script and process its output
 	return runAndProcessOutput(ctx, codespaceName)
 }
 
@@ -189,6 +194,13 @@ func uploadPortMonitorScript(ctx context.Context, codespaceName string) error {
 	_, stderr, err := gh.Exec(args...)
 	if err != nil {
 		return fmt.Errorf("error copying script to codespace: %w\nStderr: %s", err, stderr.String())
+	}
+
+	// Make the script executable
+	chmodArgs := []string{"codespace", "ssh", "--codespace", codespaceName, "--", "chmod", "+x", "~/port-monitor.sh"}
+	_, stderr, err = gh.Exec(chmodArgs...)
+	if err != nil {
+		return fmt.Errorf("error making script executable: %w\nStderr: %s", err, stderr.String())
 	}
 
 	return nil
