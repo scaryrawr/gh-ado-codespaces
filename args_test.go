@@ -501,50 +501,50 @@ func TestBuildSSHMultiplexArgsWindows(t *testing.T) {
 
 // TestControlPathLength verifies that control paths stay within Unix socket limits
 func TestControlPathLength(t *testing.T) {
-// Unix socket path limit is 104 bytes on macOS/BSD, 108 on Linux
-// We use the more conservative 104 byte limit
-const maxSocketPathLength = 104
-
-tests := []struct {
-name          string
-codespaceName string
-}{
-{
-name:          "short name",
-codespaceName: "my-codespace",
-},
-{
-name:          "long name (70 chars)",
-codespaceName: strings.Repeat("a", 70),
-},
-{
-name:          "very long name (150 chars)",
-codespaceName: strings.Repeat("b", 150),
-},
-{
-name:          "extremely long name (300 chars)",
-codespaceName: strings.Repeat("c", 300),
-},
-{
-name:          "long name with special chars",
-codespaceName: strings.Repeat("user/repo:branch-", 10), // 170 chars
-},
-}
-
-for _, tt := range tests {
-t.Run(tt.name, func(t *testing.T) {
-controlPath := GetSSHControlPath(tt.codespaceName)
-pathLength := len(controlPath)
-
-if pathLength > maxSocketPathLength {
-t.Errorf("Control path length %d exceeds Unix socket limit %d\nPath: %s", 
-pathLength, maxSocketPathLength, controlPath)
-}
-
-t.Logf("Path length: %d/%d bytes for codespace name length %d", 
-pathLength, maxSocketPathLength, len(tt.codespaceName))
-})
-}
+	// Unix socket path limit is 104 bytes on macOS/BSD, 108 on Linux
+	// We use the more conservative 104 byte limit
+	const maxSocketPathLength = 104
+	
+	tests := []struct {
+		name          string
+		codespaceName string
+	}{
+		{
+			name:          "short name",
+			codespaceName: "my-codespace",
+		},
+		{
+			name:          "long name (70 chars)",
+			codespaceName: strings.Repeat("a", 70),
+		},
+		{
+			name:          "very long name (150 chars)",
+			codespaceName: strings.Repeat("b", 150),
+		},
+		{
+			name:          "extremely long name (300 chars)",
+			codespaceName: strings.Repeat("c", 300),
+		},
+		{
+			name:          "long name with special chars",
+			codespaceName: strings.Repeat("user/repo:branch-", 10), // 170 chars
+		},
+	}
+	
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			controlPath := GetSSHControlPath(tt.codespaceName)
+			pathLength := len(controlPath)
+			
+			if pathLength > maxSocketPathLength {
+				t.Errorf("Control path length %d exceeds Unix socket limit %d\nPath: %s", 
+					pathLength, maxSocketPathLength, controlPath)
+			}
+			
+			t.Logf("Path length: %d/%d bytes for codespace name length %d", 
+				pathLength, maxSocketPathLength, len(tt.codespaceName))
+		})
+	}
 }
 
 // TestSanitizeCodespaceNameForControlLength tests the length constraint
