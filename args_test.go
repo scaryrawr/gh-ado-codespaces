@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -433,4 +434,56 @@ func TestSanitizeCodespaceNameForControl(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestBuildSSHMultiplexArgsWindows tests that multiplexing is disabled on Windows
+func TestBuildSSHMultiplexArgsWindows(t *testing.T) {
+// This test verifies the behavior on different platforms
+controlPath := "/tmp/test-socket"
+
+// Get args for both master and slave
+masterArgs := BuildSSHMultiplexArgs(controlPath, true)
+slaveArgs := BuildSSHMultiplexArgs(controlPath, false)
+
+// On Windows, both should return empty slices
+// On other platforms, they should contain multiplexing options
+if runtime.GOOS == "windows" {
+if len(masterArgs) != 0 {
+t.Errorf("On Windows, BuildSSHMultiplexArgs(master) should return empty slice, got %v", masterArgs)
+}
+if len(slaveArgs) != 0 {
+t.Errorf("On Windows, BuildSSHMultiplexArgs(slave) should return empty slice, got %v", slaveArgs)
+}
+} else {
+// On non-Windows platforms, verify multiplexing args are present
+if len(masterArgs) == 0 {
+t.Error("On non-Windows platforms, BuildSSHMultiplexArgs(master) should return multiplexing args")
+}
+if len(slaveArgs) == 0 {
+t.Error("On non-Windows platforms, BuildSSHMultiplexArgs(slave) should return multiplexing args")
+}
+
+// Verify ControlMaster settings
+foundMaster := false
+for _, arg := range masterArgs {
+if arg == "ControlMaster=auto" {
+foundMaster = true
+break
+}
+}
+if !foundMaster {
+t.Error("Master args should contain ControlMaster=auto on non-Windows platforms")
+}
+
+foundNo := false
+for _, arg := range slaveArgs {
+if arg == "ControlMaster=no" {
+foundNo = true
+break
+}
+}
+if !foundNo {
+t.Error("Slave args should contain ControlMaster=no on non-Windows platforms")
+}
+}
 }

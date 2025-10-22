@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -179,7 +180,14 @@ func sanitizeCodespaceNameForControl(name string) string {
 }
 
 // BuildSSHMultiplexArgs builds SSH multiplexing arguments for a given control path and mode
+// On Windows, SSH multiplexing may not be fully supported, so this returns an empty slice
 func BuildSSHMultiplexArgs(controlPath string, isMaster bool) []string {
+	// Skip SSH multiplexing on Windows due to potential compatibility issues
+	// with OpenSSH's ControlMaster/ControlPath implementation
+	if runtime.GOOS == "windows" {
+		return []string{}
+	}
+	
 	var args []string
 	
 	if isMaster {
