@@ -81,12 +81,21 @@ func main() {
 
 	// Initialize session ID now that we have the codespace name
 	initializeSessionID(args.CodespaceName)
+	
+	// Get SSH control path for multiplexing
+	controlPath := GetSSHControlPath(args.CodespaceName)
+	
 	// Build command line arguments for gh
 	ghFlags := args.BuildGHFlags()
+	
+	// Add SSH multiplexing options for the master connection
+	multiplexArgs := BuildSSHMultiplexArgs(controlPath, true)
+	
 	sshArgs := args.BuildSSHArgs(serverConfig.SocketPath, serverConfig.Port)
 
-	// Combine all arguments
-	finalArgs := append(ghFlags, sshArgs...)
+	// Combine all arguments: gh flags, then multiplex options, then ssh args
+	finalArgs := append(ghFlags, multiplexArgs...)
+	finalArgs = append(finalArgs, sshArgs...)
 
 	// Upload auth helpers and port monitor script
 	if err := UploadAuthHelpers(ctx, args.CodespaceName); err != nil {
@@ -161,9 +170,15 @@ func uploadAndPrepareScripts(ctx context.Context, codespaceName string) error {
 		return fmt.Errorf("failed to upload port monitor script: %w", err)
 	}
 
+	// Get SSH control path for multiplexing
+	controlPath := GetSSHControlPath(codespaceName)
+	multiplexArgs := BuildSSHMultiplexArgs(controlPath, false)
+	
 	// Make all scripts executable in a single SSH call (consolidates 3 SSH connections into 1)
-	args := []string{"codespace", "ssh", "--codespace", codespaceName, "--",
-		"chmod", "+x", "~/ado-auth-helper", "~/azure-auth-helper", "~/port-monitor.sh"}
+	args := []string{"codespace", "ssh", "--codespace", codespaceName}
+	args = append(args, multiplexArgs...)
+	args = append(args, "--", "chmod", "+x", "~/ado-auth-helper", "~/azure-auth-helper", "~/port-monitor.sh")
+	
 	_, stderr, err := gh.Exec(args...)
 	if err != nil {
 		return fmt.Errorf("error making scripts executable: %w\nStderr: %s", err, stderr.String())

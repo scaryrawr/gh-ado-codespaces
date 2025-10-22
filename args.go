@@ -3,6 +3,8 @@ package main
 import (
 	"flag"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -136,4 +138,64 @@ func (args *CommandLineArgs) BuildSSHArgs(socketPath string, port int) []string 
 	sshArgs = append(sshArgs, args.RemainingArgs...)
 
 	return sshArgs
+}
+
+// GetSSHControlPath returns the path for the SSH control socket for a given codespace
+func GetSSHControlPath(codespaceName string) string {
+	// Use a unique control path per codespace in the temp directory
+	// This follows the pattern: /tmp/gh-ado-codespaces/ssh-control-<codespace-name>
+	tempDir := os.TempDir()
+	controlDir := filepath.Join(tempDir, "gh-ado-codespaces", "ssh-control")
+	
+	// Create the directory if it doesn't exist
+	os.MkdirAll(controlDir, 0700)
+	
+	// Sanitize codespace name for use in filename
+	safeName := sanitizeCodespaceNameForControl(codespaceName)
+	return filepath.Join(controlDir, safeName)
+}
+
+// sanitizeCodespaceNameForControl sanitizes a codespace name for use in control socket path
+func sanitizeCodespaceNameForControl(name string) string {
+	if name == "" {
+		return "unknown"
+	}
+	
+	// Replace problematic characters with dashes
+	result := strings.ReplaceAll(name, "/", "-")
+	result = strings.ReplaceAll(result, "\\", "-")
+	result = strings.ReplaceAll(result, ":", "-")
+	result = strings.ReplaceAll(result, " ", "-")
+	result = strings.ReplaceAll(result, "*", "-")
+	result = strings.ReplaceAll(result, "?", "-")
+	
+	// Remove leading/trailing dashes and limit length
+	result = strings.Trim(result, "-")
+	if len(result) > 100 {
+		result = result[:100]
+	}
+	
+	return result
+}
+
+// BuildSSHMultiplexArgs builds SSH multiplexing arguments for a given control path and mode
+func BuildSSHMultiplexArgs(controlPath string, isMaster bool) []string {
+	var args []string
+	
+	if isMaster {
+		// Master connection: auto-create the control socket if it doesn't exist
+		// and allow reuse if it already exists
+		args = append(args, "-o", "ControlMaster=auto")
+	} else {
+		// Slave connection: use existing control socket but don't create one
+		args = append(args, "-o", "ControlMaster=no")
+	}
+	
+	// Set the control path
+	args = append(args, "-o", fmt.Sprintf("ControlPath=%s", controlPath))
+	
+	// Set a reasonable persist time (10 minutes after last use)
+	args = append(args, "-o", "ControlPersist=600")
+	
+	return args
 }

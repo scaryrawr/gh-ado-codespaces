@@ -196,20 +196,21 @@ func uploadPortMonitorScript(ctx context.Context, codespaceName string) error {
 		return fmt.Errorf("error copying script to codespace: %w\nStderr: %s", err, stderr.String())
 	}
 
-	// Make the script executable
-	chmodArgs := []string{"codespace", "ssh", "--codespace", codespaceName, "--", "chmod", "+x", "~/port-monitor.sh"}
-	_, stderr, err = gh.Exec(chmodArgs...)
-	if err != nil {
-		return fmt.Errorf("error making script executable: %w\nStderr: %s", err, stderr.String())
-	}
+	// Note: chmod is done by uploadAndPrepareScripts to consolidate SSH calls
 
 	return nil
 }
 
 // runAndProcessOutput runs the port-monitor.sh script and processes its output
 func runAndProcessOutput(ctx context.Context, codespaceName string) error {
+	// Get SSH control path for multiplexing
+	controlPath := GetSSHControlPath(codespaceName)
+	multiplexArgs := BuildSSHMultiplexArgs(controlPath, false)
+	
 	// Start the port-monitor.sh script on the codespace
-	args := []string{"codespace", "ssh", "--codespace", codespaceName, "--", "~/port-monitor.sh"}
+	args := []string{"codespace", "ssh", "--codespace", codespaceName}
+	args = append(args, multiplexArgs...)
+	args = append(args, "--", "~/port-monitor.sh")
 
 	// Note: We use exec.CommandContext instead of gh.Exec here because:
 	// 1. We need to process the JSON output line-by-line as it's produced in real-time

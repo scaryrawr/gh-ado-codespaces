@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -241,4 +242,195 @@ func TestParseArgs_StructFields(t *testing.T) {
 	if len(args.RemainingArgs) != 2 || args.RemainingArgs[0] != "arg1" || args.RemainingArgs[1] != "arg2" {
 		t.Errorf("Expected RemainingArgs to be ['arg1', 'arg2'], got %v", args.RemainingArgs)
 	}
+}
+
+// TestGetSSHControlPath tests the SSH control path generation
+func TestGetSSHControlPath(t *testing.T) {
+tests := []struct {
+name          string
+codespaceName string
+shouldContain string
+}{
+{
+name:          "basic codespace name",
+codespaceName: "my-codespace",
+shouldContain: "my-codespace",
+},
+{
+name:          "codespace name with special chars",
+codespaceName: "user/repo-codespace:test",
+shouldContain: "user-repo-codespace-test",
+},
+{
+name:          "empty codespace name",
+codespaceName: "",
+shouldContain: "unknown",
+},
+}
+
+for _, tt := range tests {
+t.Run(tt.name, func(t *testing.T) {
+path := GetSSHControlPath(tt.codespaceName)
+
+// Check that path contains expected sanitized name
+if !strings.Contains(path, tt.shouldContain) {
+t.Errorf("GetSSHControlPath() = %v, should contain %v", path, tt.shouldContain)
+}
+
+// Check that path is in temp directory
+if !strings.Contains(path, "gh-ado-codespaces") || !strings.Contains(path, "ssh-control") {
+t.Errorf("GetSSHControlPath() = %v, should contain gh-ado-codespaces/ssh-control", path)
+}
+})
+}
+}
+
+// TestBuildSSHMultiplexArgs tests SSH multiplexing argument generation
+func TestBuildSSHMultiplexArgs(t *testing.T) {
+tests := []struct {
+name        string
+controlPath string
+isMaster    bool
+wantMaster  string
+}{
+{
+name:        "master connection",
+controlPath: "/tmp/control-socket",
+isMaster:    true,
+wantMaster:  "ControlMaster=auto",
+},
+{
+name:        "slave connection",
+controlPath: "/tmp/control-socket",
+isMaster:    false,
+wantMaster:  "ControlMaster=no",
+},
+}
+
+for _, tt := range tests {
+t.Run(tt.name, func(t *testing.T) {
+args := BuildSSHMultiplexArgs(tt.controlPath, tt.isMaster)
+
+// Check that it contains the expected ControlMaster setting
+found := false
+for _, arg := range args {
+if arg == tt.wantMaster {
+found = true
+break
+}
+}
+if !found {
+t.Errorf("BuildSSHMultiplexArgs() = %v, should contain %v", args, tt.wantMaster)
+}
+
+// Check that it contains ControlPath
+foundPath := false
+expectedPath := fmt.Sprintf("ControlPath=%s", tt.controlPath)
+for _, arg := range args {
+if arg == expectedPath {
+foundPath = true
+break
+}
+}
+if !foundPath {
+t.Errorf("BuildSSHMultiplexArgs() = %v, should contain %v", args, expectedPath)
+}
+
+// Check that it contains ControlPersist
+foundPersist := false
+for _, arg := range args {
+if strings.HasPrefix(arg, "ControlPersist=") {
+foundPersist = true
+break
+}
+}
+if !foundPersist {
+t.Errorf("BuildSSHMultiplexArgs() = %v, should contain ControlPersist", args)
+}
+})
+}
+}
+
+// TestSSHMultiplexingIntegration tests that SSH multiplexing arguments are properly formatted
+func TestSSHMultiplexingIntegration(t *testing.T) {
+codespaceName := "test-codespace"
+controlPath := GetSSHControlPath(codespaceName)
+
+// Test master connection args
+masterArgs := BuildSSHMultiplexArgs(controlPath, true)
+
+// Verify master args structure
+expectedMasterPairs := map[string]string{
+"-o": "ControlMaster=auto",
+}
+
+for i := 0; i < len(masterArgs)-1; i++ {
+if masterArgs[i] == "-o" {
+if expectedValue, exists := expectedMasterPairs["-o"]; exists {
+if masterArgs[i+1] == expectedValue {
+delete(expectedMasterPairs, "-o")
+break
+}
+}
+}
+}
+
+if len(expectedMasterPairs) > 0 {
+t.Errorf("Master args missing expected values: %v", expectedMasterPairs)
+}
+
+// Test slave connection args
+slaveArgs := BuildSSHMultiplexArgs(controlPath, false)
+
+// Verify slave args have ControlMaster=no
+foundNo := false
+for i := 0; i < len(slaveArgs)-1; i++ {
+if slaveArgs[i] == "-o" && slaveArgs[i+1] == "ControlMaster=no" {
+foundNo = true
+break
+}
+}
+
+if !foundNo {
+t.Errorf("Slave args should contain ControlMaster=no, got: %v", slaveArgs)
+}
+}
+
+// TestSanitizeCodespaceNameForControl tests codespace name sanitization for control paths
+func TestSanitizeCodespaceNameForControl(t *testing.T) {
+tests := []struct {
+name     string
+input    string
+expected string
+}{
+{
+name:     "simple name",
+input:    "my-codespace",
+expected: "my-codespace",
+},
+{
+name:     "name with slashes",
+input:    "user/repo",
+expected: "user-repo",
+},
+{
+name:     "name with colons and spaces",
+input:    "test: codespace",
+expected: "test--codespace",
+},
+{
+name:     "empty name",
+input:    "",
+expected: "unknown",
+},
+}
+
+for _, tt := range tests {
+t.Run(tt.name, func(t *testing.T) {
+result := sanitizeCodespaceNameForControl(tt.input)
+if result != tt.expected {
+t.Errorf("sanitizeCodespaceNameForControl(%q) = %q, want %q", tt.input, result, tt.expected)
+}
+})
+}
 }
