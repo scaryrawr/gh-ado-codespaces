@@ -208,9 +208,9 @@ func runAndProcessOutput(ctx context.Context, codespaceName string) error {
 	multiplexArgs := BuildSSHMultiplexArgs(controlPath, false)
 	
 	// Start the port-monitor.sh script on the codespace
-	args := []string{"codespace", "ssh", "--codespace", codespaceName}
+	args := []string{"codespace", "ssh", "--codespace", codespaceName, "--"}
 	args = append(args, multiplexArgs...)
-	args = append(args, "--", "~/port-monitor.sh")
+	args = append(args, "~/port-monitor.sh")
 
 	// Note: We use exec.CommandContext instead of gh.Exec here because:
 	// 1. We need to process the JSON output line-by-line as it's produced in real-time

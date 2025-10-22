@@ -101,9 +101,11 @@ func main() {
 	
 	sshArgs := args.BuildSSHArgs(serverConfig.SocketPath, serverConfig.Port)
 
-	// Combine all arguments: gh flags, then multiplex options, then ssh args
-	finalArgs := append(ghFlags, multiplexArgs...)
-	finalArgs = append(finalArgs, sshArgs...)
+	// Combine all arguments: gh flags, then ssh args (which start with --), then multiplex options
+	// The structure is: gh codespace ssh --codespace <name> -- -o <multiplex> -R <forward> -t
+	finalArgs := append(ghFlags, sshArgs[0]) // Add ghFlags and the "--" separator
+	finalArgs = append(finalArgs, multiplexArgs...) // Add multiplex options after --
+	finalArgs = append(finalArgs, sshArgs[1:]...) // Add the rest of ssh args
 
 	// Upload auth helpers and port monitor script
 	if err := UploadAuthHelpers(ctx, args.CodespaceName); err != nil {
@@ -183,9 +185,9 @@ func establishSSHMaster(ctx context.Context, codespaceName string, controlPath s
 	// -fN: go to background and don't execute commands (just establish connection)
 	multiplexArgs := BuildSSHMultiplexArgs(controlPath, true)
 	
-	args := []string{"codespace", "ssh", "--codespace", codespaceName}
+	args := []string{"codespace", "ssh", "--codespace", codespaceName, "--"}
 	args = append(args, multiplexArgs...)
-	args = append(args, "--", "-fN")
+	args = append(args, "-fN")
 	
 	// Start the background master connection
 	// This will authenticate and create the control socket, then go to background
@@ -209,9 +211,9 @@ func uploadAndPrepareScripts(ctx context.Context, codespaceName string) error {
 	multiplexArgs := BuildSSHMultiplexArgs(controlPath, false)
 	
 	// Make all scripts executable in a single SSH call (consolidates 3 SSH connections into 1)
-	args := []string{"codespace", "ssh", "--codespace", codespaceName}
+	args := []string{"codespace", "ssh", "--codespace", codespaceName, "--"}
 	args = append(args, multiplexArgs...)
-	args = append(args, "--", "chmod", "+x", "~/ado-auth-helper", "~/azure-auth-helper", "~/port-monitor.sh")
+	args = append(args, "chmod", "+x", "~/ado-auth-helper", "~/azure-auth-helper", "~/port-monitor.sh")
 	
 	_, stderr, err := gh.Exec(args...)
 	if err != nil {
