@@ -153,15 +153,21 @@ func GetSSHControlPath(codespaceName string) string {
 	// Create the directory if it doesn't exist
 	os.MkdirAll(controlDir, 0700)
 	
-	// Sanitize codespace name for use in filename
-	safeName := sanitizeCodespaceNameForControl(codespaceName)
+	// Calculate safe codespace name length based on actual temp directory
+	// Unix socket paths are limited to 104 bytes on macOS/BSD, 108 on Linux
+	const socketPathLimit = 104 // Use conservative limit for macOS/BSD
+	basePath := controlDir + string(filepath.Separator)
+	maxNameLength := socketPathLimit - len(basePath) - 1 // -1 for safety margin
+	
+	// Sanitize codespace name for use in filename with appropriate length limit
+	safeName := sanitizeCodespaceNameForControl(codespaceName, maxNameLength)
 	return filepath.Join(controlDir, safeName)
 }
 
 // sanitizeCodespaceNameForControl sanitizes a codespace name for use in control socket path
 // To avoid exceeding Unix socket path limits (typically 104-108 bytes), we ensure the
 // resulting path stays well under this limit by using a hash for long names
-func sanitizeCodespaceNameForControl(name string) string {
+func sanitizeCodespaceNameForControl(name string, maxLength int) string {
 	if name == "" {
 		return "unknown"
 	}
@@ -177,18 +183,27 @@ func sanitizeCodespaceNameForControl(name string) string {
 	// Remove leading/trailing dashes
 	result = strings.Trim(result, "-")
 	
-	// Unix socket paths are limited to ~104 bytes on macOS/BSD, 108 on Linux
-	// Base path is ~35 bytes, so we limit codespace name to 60 bytes to stay safe
-	// For longer names, use first 48 chars + hash of full name for uniqueness
-	const maxLength = 60
-	if len(result) > maxLength {
-		// Use first 48 chars + 8-char hash for uniqueness
-		hash := sha256.Sum256([]byte(result))
-		hashStr := hex.EncodeToString(hash[:])[:8]
-		result = result[:48] + "-" + hashStr
+	// If the name fits within the limit, use it as-is
+	if len(result) <= maxLength {
+		return result
 	}
 	
-	return result
+	// For longer names, use truncation + hash for uniqueness
+	// Reserve 9 bytes for dash + 8-char hash
+	const hashLength = 8
+	prefixLength := maxLength - hashLength - 1 // -1 for dash separator
+	if prefixLength < 1 {
+		prefixLength = 1
+	}
+	
+	// Use first N chars + 8-char hash for uniqueness
+	hash := sha256.Sum256([]byte(result))
+	hashStr := hex.EncodeToString(hash[:])[:hashLength]
+	
+	if prefixLength >= len(result) {
+		return result[:len(result)] + "-" + hashStr
+	}
+	return result[:prefixLength] + "-" + hashStr
 }
 
 // BuildSSHMultiplexArgs builds SSH multiplexing arguments for a given control path

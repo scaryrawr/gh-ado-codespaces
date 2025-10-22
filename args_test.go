@@ -406,37 +406,42 @@ func TestSSHMultiplexingIntegration(t *testing.T) {
 // TestSanitizeCodespaceNameForControl tests codespace name sanitization for control paths
 func TestSanitizeCodespaceNameForControl(t *testing.T) {
 	tests := []struct {
-		name     string
-		input    string
-		expected string
+		name      string
+		input     string
+		maxLength int
+		expected  string
 	}{
 		{
-			name:     "simple name",
-			input:    "my-codespace",
-			expected: "my-codespace",
+			name:      "simple name",
+			input:     "my-codespace",
+			maxLength: 60,
+			expected:  "my-codespace",
 		},
 		{
-			name:     "name with slashes",
-			input:    "user/repo",
-			expected: "user-repo",
+			name:      "name with slashes",
+			input:     "user/repo",
+			maxLength: 60,
+			expected:  "user-repo",
 		},
 		{
-			name:     "name with colons and spaces",
-			input:    "test: codespace",
-			expected: "test--codespace",
+			name:      "name with colons and spaces",
+			input:     "test: codespace",
+			maxLength: 60,
+			expected:  "test--codespace",
 		},
 		{
-			name:     "empty name",
-			input:    "",
-			expected: "unknown",
+			name:      "empty name",
+			input:     "",
+			maxLength: 60,
+			expected:  "unknown",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := sanitizeCodespaceNameForControl(tt.input)
+			result := sanitizeCodespaceNameForControl(tt.input, tt.maxLength)
 			if result != tt.expected {
-				t.Errorf("sanitizeCodespaceNameForControl(%q) = %q, want %q", tt.input, result, tt.expected)
+				t.Errorf("sanitizeCodespaceNameForControl(%q, %d) = %q, want %q", tt.input, tt.maxLength, result, tt.expected)
 			}
 		})
 	}
@@ -545,43 +550,60 @@ pathLength, maxSocketPathLength, len(tt.codespaceName))
 // TestSanitizeCodespaceNameForControlLength tests the length constraint
 func TestSanitizeCodespaceNameForControlLength(t *testing.T) {
 	tests := []struct {
-		name          string
-		input         string
+		name           string
+		input          string
+		maxLength      int
 		expectedMaxLen int
 	}{
 		{
-			name:          "short name stays unchanged",
-			input:         "short",
+			name:           "short name stays unchanged",
+			input:          "short",
+			maxLength:      60,
 			expectedMaxLen: 60,
 		},
 		{
-			name:          "60 char name stays unchanged",
-			input:         strings.Repeat("a", 60),
+			name:           "60 char name with 60 max stays unchanged",
+			input:          strings.Repeat("a", 60),
+			maxLength:      60,
 			expectedMaxLen: 60,
 		},
 		{
-			name:          "61 char name gets truncated with hash",
-			input:         strings.Repeat("b", 61),
-			expectedMaxLen: 57, // 48 + 1 (dash) + 8 (hash) = 57
+			name:           "61 char name with 60 max gets truncated with hash",
+			input:          strings.Repeat("b", 61),
+			maxLength:      60,
+			expectedMaxLen: 60,
 		},
 		{
-			name:          "very long name gets truncated with hash",
-			input:         strings.Repeat("c", 200),
-			expectedMaxLen: 57,
+			name:           "very long name with 60 max gets truncated with hash",
+			input:          strings.Repeat("c", 200),
+			maxLength:      60,
+			expectedMaxLen: 60,
+		},
+		{
+			name:           "short name with small max (24 bytes)",
+			input:          "my-codespace",
+			maxLength:      24,
+			expectedMaxLen: 24,
+		},
+		{
+			name:           "long name with small max (24 bytes) gets truncated",
+			input:          strings.Repeat("d", 100),
+			maxLength:      24,
+			expectedMaxLen: 24,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := sanitizeCodespaceNameForControl(tt.input)
+			result := sanitizeCodespaceNameForControl(tt.input, tt.maxLength)
 			
 			if len(result) > tt.expectedMaxLen {
 				t.Errorf("Result length %d exceeds expected max %d: %s", 
 					len(result), tt.expectedMaxLen, result)
 			}
 			
-			t.Logf("Input length: %d, Output length: %d, Output: %s", 
-				len(tt.input), len(result), result)
+			t.Logf("Input length: %d, Max: %d, Output length: %d, Output: %s", 
+				len(tt.input), tt.maxLength, len(result), result)
 		})
 	}
 }
@@ -591,14 +613,20 @@ func TestSanitizeCodespaceNameUniqueness(t *testing.T) {
 	// Two different very long names should produce different sanitized names
 	name1 := strings.Repeat("a", 100) + "different"
 	name2 := strings.Repeat("a", 100) + "values"
+	maxLength := 24 // Small limit to force hashing
 	
-	result1 := sanitizeCodespaceNameForControl(name1)
-	result2 := sanitizeCodespaceNameForControl(name2)
+	result1 := sanitizeCodespaceNameForControl(name1, maxLength)
+	result2 := sanitizeCodespaceNameForControl(name2, maxLength)
 	
 	if result1 == result2 {
 		t.Errorf("Different long names produced same sanitized result:\n  %s\n  %s", result1, result2)
 	}
 	
-	t.Logf("Name1 sanitized: %s", result1)
-	t.Logf("Name2 sanitized: %s", result2)
+	if len(result1) > maxLength || len(result2) > maxLength {
+		t.Errorf("Results exceed max length %d: %s (%d), %s (%d)", 
+			maxLength, result1, len(result1), result2, len(result2))
+	}
+	
+	t.Logf("Name1 sanitized: %s (length: %d)", result1, len(result1))
+	t.Logf("Name2 sanitized: %s (length: %d)", result2, len(result2))
 }
