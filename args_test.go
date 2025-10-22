@@ -278,9 +278,9 @@ func TestGetSSHControlPath(t *testing.T) {
 				t.Errorf("GetSSHControlPath() = %v, should contain %v", path, tt.shouldContain)
 			}
 			
-			// Check that path is in temp directory
-			if !strings.Contains(path, "gh-ado-codespaces") || !strings.Contains(path, "ssh-control") {
-				t.Errorf("GetSSHControlPath() = %v, should contain gh-ado-codespaces/ssh-control", path)
+			// Check that path is in .ssh/gh directory
+			if !strings.Contains(path, ".ssh") || !strings.Contains(path, "gh") {
+				t.Errorf("GetSSHControlPath() = %v, should contain .ssh/gh", path)
 			}
 		})
 	}

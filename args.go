@@ -145,15 +145,22 @@ func (args *CommandLineArgs) BuildSSHArgs(socketPath string, port int) []string 
 
 // GetSSHControlPath returns the path for the SSH control socket for a given codespace
 func GetSSHControlPath(codespaceName string) string {
-	// Use a unique control path per codespace in the temp directory
-	// This follows the pattern: /tmp/gh-ado-codespaces/ssh-control-<codespace-name>
-	tempDir := os.TempDir()
-	controlDir := filepath.Join(tempDir, "gh-ado-codespaces", "ssh-control")
+	// Use ~/.ssh/gh/ for control sockets - this is:
+	// 1. Shorter than temp directory paths (especially on macOS)
+	// 2. More appropriate location for SSH-related files
+	// 3. SSH automatically cleans up stale control sockets
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		// Fallback to temp directory if home directory is not available
+		homeDir = os.TempDir()
+	}
+	
+	controlDir := filepath.Join(homeDir, ".ssh", "gh")
 	
 	// Create the directory if it doesn't exist
 	os.MkdirAll(controlDir, 0700)
 	
-	// Calculate safe codespace name length based on actual temp directory
+	// Calculate safe codespace name length based on actual control directory
 	// Unix socket paths are limited to 104 bytes on macOS/BSD, 108 on Linux
 	const socketPathLimit = 104 // Use conservative limit for macOS/BSD
 	basePath := controlDir + string(filepath.Separator)
