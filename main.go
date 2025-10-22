@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"runtime"
@@ -12,7 +13,6 @@ import (
 	"syscall"
 	"time"
 
-	// Added for time.Sleep
 	"github.com/cli/go-gh/v2"
 )
 
@@ -86,17 +86,23 @@ func main() {
 	// Get SSH control path for multiplexing
 	controlPath := GetSSHControlPath(args.CodespaceName)
 	
-	// Establish background SSH master connection for multiplexing
-	// This creates a persistent master that subsequent connections can reuse
-	if err := establishSSHMaster(ctx, args.CodespaceName, controlPath); err != nil {
+	// Establish dedicated background SSH master connection
+	// This creates a persistent master that all subsequent connections reuse
+	// We clean it up when the interactive session ends
+	masterCmd, err := establishSSHMaster(ctx, args.CodespaceName, controlPath)
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to establish SSH master: %v\n", err)
 		// Continue anyway - operations will work without multiplexing
+	}
+	// Defer cleanup of master connection when interactive session ends
+	if masterCmd != nil {
+		defer cleanupSSHMaster(ctx, args.CodespaceName, controlPath, masterCmd)
 	}
 	
 	// Build command line arguments for gh
 	ghFlags := args.BuildGHFlags()
 	
-	// Add SSH multiplexing options (slave connections use existing master)
+	// Add SSH multiplexing options for main session (slave connection)
 	multiplexArgs := BuildSSHMultiplexArgs(controlPath, false)
 	
 	sshArgs := args.BuildSSHArgs(serverConfig.SocketPath, serverConfig.Port)
@@ -173,30 +179,69 @@ func sanitizeForFilename(name string) string {
 	return result
 }
 
-// establishSSHMaster creates a background SSH master connection for multiplexing
-// This allows subsequent non-interactive SSH commands to reuse the connection
-func establishSSHMaster(ctx context.Context, codespaceName string, controlPath string) error {
+// establishSSHMaster creates a dedicated background SSH master connection using 'sleep infinity'
+// This master stays alive and allows subsequent SSH commands to reuse the connection
+// Returns the exec.Cmd so it can be killed when the interactive session ends
+func establishSSHMaster(ctx context.Context, codespaceName string, controlPath string) (*exec.Cmd, error) {
 	// Skip on Windows where multiplexing is disabled
 	if runtime.GOOS == "windows" {
-		return nil
+		return nil, nil
 	}
 	
-	// Build arguments for background master connection
-	// -fN: go to background and don't execute commands (just establish connection)
+	// Build arguments for background master with 'sleep infinity'
+	// This keeps the master connection alive until explicitly killed
 	multiplexArgs := BuildSSHMultiplexArgs(controlPath, true)
 	
 	args := []string{"codespace", "ssh", "--codespace", codespaceName, "--"}
 	args = append(args, multiplexArgs...)
-	args = append(args, "-fN")
+	args = append(args, "sleep", "infinity")
 	
-	// Start the background master connection
-	// This will authenticate and create the control socket, then go to background
-	_, stderr, err := gh.Exec(args...)
-	if err != nil {
-		return fmt.Errorf("failed to establish SSH master connection: %w\nStderr: %s", err, stderr.String())
+	// Start the master connection in background
+	cmd := exec.CommandContext(ctx, "gh", args...)
+	cmd.Stdout = nil
+	cmd.Stderr = nil
+	
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("failed to start SSH master: %w", err)
 	}
 	
-	return nil
+	// Give the master connection a moment to establish
+	time.Sleep(2 * time.Second)
+	
+	// Verify the control socket was created
+	if _, err := os.Stat(controlPath); os.IsNotExist(err) {
+		// Kill the command if socket wasn't created
+		cmd.Process.Kill()
+		return nil, fmt.Errorf("control socket not created at %s", controlPath)
+	}
+	
+	return cmd, nil
+}
+
+// cleanupSSHMaster terminates the SSH master connection and removes the control socket
+func cleanupSSHMaster(ctx context.Context, codespaceName string, controlPath string, masterCmd *exec.Cmd) {
+	if masterCmd == nil {
+		return
+	}
+	
+	// First, try to gracefully stop the master using SSH -O exit
+	multiplexArgs := BuildSSHMultiplexArgs(controlPath, false)
+	exitArgs := []string{"codespace", "ssh", "--codespace", codespaceName, "--"}
+	exitArgs = append(exitArgs, multiplexArgs...)
+	exitArgs = append(exitArgs, "-O", "exit")
+	
+	gh.Exec(exitArgs...)
+	
+	// Kill the sleep infinity process
+	if masterCmd.Process != nil {
+		masterCmd.Process.Kill()
+	}
+	
+	// Wait for process to clean up
+	masterCmd.Wait()
+	
+	// Remove control socket if it still exists
+	os.Remove(controlPath)
 }
 
 // uploadAndPrepareScripts uploads the port monitor script and makes all scripts executable
@@ -206,7 +251,7 @@ func uploadAndPrepareScripts(ctx context.Context, codespaceName string) error {
 		return fmt.Errorf("failed to upload port monitor script: %w", err)
 	}
 
-	// Get SSH control path for multiplexing
+	// Get SSH control path for multiplexing (slave connection)
 	controlPath := GetSSHControlPath(codespaceName)
 	multiplexArgs := BuildSSHMultiplexArgs(controlPath, false)
 	

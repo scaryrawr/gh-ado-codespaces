@@ -214,6 +214,7 @@ func sanitizeCodespaceNameForControl(name string, maxLength int) string {
 }
 
 // BuildSSHMultiplexArgs builds SSH multiplexing arguments for a given control path
+// isMaster: true for the dedicated background master, false for connections that reuse it
 // On Windows, SSH multiplexing may not be fully supported, so this returns an empty slice
 func BuildSSHMultiplexArgs(controlPath string, isMaster bool) []string {
 	// Skip SSH multiplexing on Windows due to potential compatibility issues
@@ -237,6 +238,7 @@ func BuildSSHMultiplexArgs(controlPath string, isMaster bool) []string {
 	args = append(args, "-o", fmt.Sprintf("ControlPath=%s", controlPath))
 	
 	// Set a reasonable persist time (10 minutes after last use)
+	// This keeps the master connection alive even after the initiating connection closes
 	args = append(args, "-o", "ControlPersist=600")
 	
 	return args

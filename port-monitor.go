@@ -203,7 +203,7 @@ func uploadPortMonitorScript(ctx context.Context, codespaceName string) error {
 
 // runAndProcessOutput runs the port-monitor.sh script and processes its output
 func runAndProcessOutput(ctx context.Context, codespaceName string) error {
-	// Get SSH control path for multiplexing
+	// Get SSH control path for multiplexing (slave connection)
 	controlPath := GetSSHControlPath(codespaceName)
 	multiplexArgs := BuildSSHMultiplexArgs(controlPath, false)
 	
