@@ -88,6 +88,16 @@ func main() {
 	// Combine all arguments
 	finalArgs := append(ghFlags, sshArgs...)
 
+	// Upload auth helpers and port monitor script
+	if err := UploadAuthHelpers(ctx, args.CodespaceName); err != nil {
+		// Continue anyway, as SSH might still work without auth helpers
+	}
+
+	// Upload port monitor script and make all scripts executable in a single SSH call
+	if err := uploadAndPrepareScripts(ctx, args.CodespaceName); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to prepare scripts: %v\n", err)
+	}
+
 	// Start the port monitor in the background
 	monitorController, err := StartPortMonitor(ctx, args.CodespaceName)
 	if err != nil {
@@ -97,11 +107,6 @@ func main() {
 		monitorController.Stop() // Signal stop
 		monitorController.Wait() // Wait for cleanup
 	}()
-
-	// Upload auth helpers
-	if err := UploadAuthHelpers(ctx, args.CodespaceName); err != nil {
-		// Continue anyway, as SSH might still work without auth helpers
-	}
 
 	// Execute the command
 	// Pass the cancellable context to gh.ExecInteractive
@@ -147,6 +152,24 @@ func sanitizeForFilename(name string) string {
 	}
 
 	return result
+}
+
+// uploadAndPrepareScripts uploads the port monitor script and makes all scripts executable
+func uploadAndPrepareScripts(ctx context.Context, codespaceName string) error {
+	// Upload port monitor script
+	if err := uploadPortMonitorScript(ctx, codespaceName); err != nil {
+		return fmt.Errorf("failed to upload port monitor script: %w", err)
+	}
+
+	// Make all scripts executable in a single SSH call (consolidates 3 SSH connections into 1)
+	args := []string{"codespace", "ssh", "--codespace", codespaceName, "--",
+		"chmod", "+x", "~/ado-auth-helper", "~/azure-auth-helper", "~/port-monitor.sh"}
+	_, stderr, err := gh.Exec(args...)
+	if err != nil {
+		return fmt.Errorf("error making scripts executable: %w\nStderr: %s", err, stderr.String())
+	}
+
+	return nil
 }
 
 // getSessionLogDirectory returns the session-specific log directory
