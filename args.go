@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"flag"
 	"fmt"
 	"os"
@@ -157,6 +159,8 @@ func GetSSHControlPath(codespaceName string) string {
 }
 
 // sanitizeCodespaceNameForControl sanitizes a codespace name for use in control socket path
+// To avoid exceeding Unix socket path limits (typically 104-108 bytes), we ensure the
+// resulting path stays well under this limit by using a hash for long names
 func sanitizeCodespaceNameForControl(name string) string {
 	if name == "" {
 		return "unknown"
@@ -170,10 +174,18 @@ func sanitizeCodespaceNameForControl(name string) string {
 	result = strings.ReplaceAll(result, "*", "-")
 	result = strings.ReplaceAll(result, "?", "-")
 	
-	// Remove leading/trailing dashes and limit length
+	// Remove leading/trailing dashes
 	result = strings.Trim(result, "-")
-	if len(result) > 100 {
-		result = result[:100]
+	
+	// Unix socket paths are limited to ~104 bytes on macOS/BSD, 108 on Linux
+	// Base path is ~35 bytes, so we limit codespace name to 60 bytes to stay safe
+	// For longer names, use first 48 chars + hash of full name for uniqueness
+	const maxLength = 60
+	if len(result) > maxLength {
+		// Use first 48 chars + 8-char hash for uniqueness
+		hash := sha256.Sum256([]byte(result))
+		hashStr := hex.EncodeToString(hash[:])[:8]
+		result = result[:48] + "-" + hashStr
 	}
 	
 	return result
