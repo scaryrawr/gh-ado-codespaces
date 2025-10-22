@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"os"
+	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -241,4 +243,390 @@ func TestParseArgs_StructFields(t *testing.T) {
 	if len(args.RemainingArgs) != 2 || args.RemainingArgs[0] != "arg1" || args.RemainingArgs[1] != "arg2" {
 		t.Errorf("Expected RemainingArgs to be ['arg1', 'arg2'], got %v", args.RemainingArgs)
 	}
+}
+
+// TestGetSSHControlPath tests the SSH control path generation
+func TestGetSSHControlPath(t *testing.T) {
+	tests := []struct {
+		name          string
+		codespaceName string
+		shouldContain string
+	}{
+		{
+			name:          "basic codespace name",
+			codespaceName: "my-codespace",
+			shouldContain: "my-codespace",
+		},
+		{
+			name:          "codespace name with special chars",
+			codespaceName: "user/repo-codespace:test",
+			shouldContain: "user-repo-codespace-test",
+		},
+		{
+			name:          "empty codespace name",
+			codespaceName: "",
+			shouldContain: "unknown",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := GetSSHControlPath(tt.codespaceName)
+			
+			// Check that path contains expected sanitized name
+			if !strings.Contains(path, tt.shouldContain) {
+				t.Errorf("GetSSHControlPath() = %v, should contain %v", path, tt.shouldContain)
+			}
+			
+			// Check that path is in .ssh/gh directory
+			if !strings.Contains(path, ".ssh") || !strings.Contains(path, "gh") {
+				t.Errorf("GetSSHControlPath() = %v, should contain .ssh/gh", path)
+			}
+		})
+	}
+}
+
+// TestBuildSSHMultiplexArgs tests SSH multiplexing argument generation
+func TestBuildSSHMultiplexArgs(t *testing.T) {
+	tests := []struct {
+		name        string
+		controlPath string
+		isMaster    bool
+		wantMaster  string
+	}{
+		{
+			name:        "master connection",
+			controlPath: "/tmp/control-socket",
+			isMaster:    true,
+			wantMaster:  "ControlMaster=yes",
+		},
+		{
+			name:        "slave connection",
+			controlPath: "/tmp/control-socket",
+			isMaster:    false,
+			wantMaster:  "ControlMaster=no",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			args := BuildSSHMultiplexArgs(tt.controlPath, tt.isMaster)
+			
+			// Check that it contains the expected ControlMaster setting
+			found := false
+			for _, arg := range args {
+				if arg == tt.wantMaster {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Errorf("BuildSSHMultiplexArgs() = %v, should contain %v", args, tt.wantMaster)
+			}
+			
+			// Check that it contains ControlPath
+			foundPath := false
+			expectedPath := fmt.Sprintf("ControlPath=%s", tt.controlPath)
+			for _, arg := range args {
+				if arg == expectedPath {
+					foundPath = true
+					break
+				}
+			}
+			if !foundPath {
+				t.Errorf("BuildSSHMultiplexArgs() = %v, should contain %v", args, expectedPath)
+			}
+			
+			// Check that it contains ControlPersist
+			foundPersist := false
+			for _, arg := range args {
+				if strings.HasPrefix(arg, "ControlPersist=") {
+					foundPersist = true
+					break
+				}
+			}
+			if !foundPersist {
+				t.Errorf("BuildSSHMultiplexArgs() = %v, should contain ControlPersist", args)
+			}
+		})
+	}
+}
+
+// TestSSHMultiplexingIntegration tests that SSH multiplexing arguments are properly formatted
+func TestSSHMultiplexingIntegration(t *testing.T) {
+	codespaceName := "test-codespace"
+	controlPath := GetSSHControlPath(codespaceName)
+	
+	// Test master connection args
+	masterArgs := BuildSSHMultiplexArgs(controlPath, true)
+	
+	// Verify master args have ControlMaster=yes
+	foundYes := false
+	for i := 0; i < len(masterArgs)-1; i++ {
+		if masterArgs[i] == "-o" && masterArgs[i+1] == "ControlMaster=yes" {
+			foundYes = true
+			break
+		}
+	}
+	
+	if !foundYes {
+		t.Errorf("Master args should contain ControlMaster=yes, got: %v", masterArgs)
+	}
+	
+	// Test slave connection args
+	slaveArgs := BuildSSHMultiplexArgs(controlPath, false)
+	
+	// Verify slave args have ControlMaster=no
+	foundNo := false
+	for i := 0; i < len(slaveArgs)-1; i++ {
+		if slaveArgs[i] == "-o" && slaveArgs[i+1] == "ControlMaster=no" {
+			foundNo = true
+			break
+		}
+	}
+	
+	if !foundNo {
+		t.Errorf("Slave args should contain ControlMaster=no, got: %v", slaveArgs)
+	}
+	
+	// Verify both contain the control path
+	foundPath := false
+	for _, arg := range masterArgs {
+		if strings.Contains(arg, "ControlPath=") && strings.Contains(arg, codespaceName) {
+			foundPath = true
+			break
+		}
+	}
+	
+	if !foundPath {
+		t.Errorf("Args should contain ControlPath with codespace name, got: %v", masterArgs)
+	}
+}
+
+// TestSanitizeCodespaceNameForControl tests codespace name sanitization for control paths
+func TestSanitizeCodespaceNameForControl(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     string
+		maxLength int
+		expected  string
+	}{
+		{
+			name:      "simple name",
+			input:     "my-codespace",
+			maxLength: 60,
+			expected:  "my-codespace",
+		},
+		{
+			name:      "name with slashes",
+			input:     "user/repo",
+			maxLength: 60,
+			expected:  "user-repo",
+		},
+		{
+			name:      "name with colons and spaces",
+			input:     "test: codespace",
+			maxLength: 60,
+			expected:  "test--codespace",
+		},
+		{
+			name:      "empty name",
+			input:     "",
+			maxLength: 60,
+			expected:  "unknown",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := sanitizeCodespaceNameForControl(tt.input, tt.maxLength)
+			if result != tt.expected {
+				t.Errorf("sanitizeCodespaceNameForControl(%q, %d) = %q, want %q", tt.input, tt.maxLength, result, tt.expected)
+			}
+		})
+	}
+}
+
+// TestBuildSSHMultiplexArgsWindows tests that multiplexing is disabled on Windows
+func TestBuildSSHMultiplexArgsWindows(t *testing.T) {
+	// This test verifies the behavior on different platforms
+	controlPath := "/tmp/test-socket"
+	
+	// Get args for both master and slave
+	masterArgs := BuildSSHMultiplexArgs(controlPath, true)
+	slaveArgs := BuildSSHMultiplexArgs(controlPath, false)
+	
+	// On Windows, both should return empty slices
+	// On other platforms, they should contain multiplexing options
+	if runtime.GOOS == "windows" {
+		if len(masterArgs) != 0 {
+			t.Errorf("On Windows, BuildSSHMultiplexArgs(master) should return empty slice, got %v", masterArgs)
+		}
+		if len(slaveArgs) != 0 {
+			t.Errorf("On Windows, BuildSSHMultiplexArgs(slave) should return empty slice, got %v", slaveArgs)
+		}
+	} else {
+		// On non-Windows platforms, verify multiplexing args are present
+		if len(masterArgs) == 0 {
+			t.Error("On non-Windows platforms, BuildSSHMultiplexArgs(master) should return multiplexing args")
+		}
+		if len(slaveArgs) == 0 {
+			t.Error("On non-Windows platforms, BuildSSHMultiplexArgs(slave) should return multiplexing args")
+		}
+		
+		// Verify ControlMaster settings
+		foundYes := false
+		for _, arg := range masterArgs {
+			if arg == "ControlMaster=yes" {
+				foundYes = true
+				break
+			}
+		}
+		if !foundYes {
+			t.Error("Master args should contain ControlMaster=yes on non-Windows platforms")
+		}
+		
+		foundNo := false
+		for _, arg := range slaveArgs {
+			if arg == "ControlMaster=no" {
+				foundNo = true
+				break
+			}
+		}
+		if !foundNo {
+			t.Error("Slave args should contain ControlMaster=no on non-Windows platforms")
+		}
+	}
+}
+
+// TestControlPathLength verifies that control paths stay within Unix socket limits
+func TestControlPathLength(t *testing.T) {
+	// Unix socket path limit is 104 bytes on macOS/BSD, 108 on Linux
+	// We use the more conservative 104 byte limit
+	const maxSocketPathLength = 104
+	
+	tests := []struct {
+		name          string
+		codespaceName string
+	}{
+		{
+			name:          "short name",
+			codespaceName: "my-codespace",
+		},
+		{
+			name:          "long name (70 chars)",
+			codespaceName: strings.Repeat("a", 70),
+		},
+		{
+			name:          "very long name (150 chars)",
+			codespaceName: strings.Repeat("b", 150),
+		},
+		{
+			name:          "extremely long name (300 chars)",
+			codespaceName: strings.Repeat("c", 300),
+		},
+		{
+			name:          "long name with special chars",
+			codespaceName: strings.Repeat("user/repo:branch-", 10), // 170 chars
+		},
+	}
+	
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			controlPath := GetSSHControlPath(tt.codespaceName)
+			pathLength := len(controlPath)
+			
+			if pathLength > maxSocketPathLength {
+				t.Errorf("Control path length %d exceeds Unix socket limit %d\nPath: %s", 
+					pathLength, maxSocketPathLength, controlPath)
+			}
+			
+			t.Logf("Path length: %d/%d bytes for codespace name length %d", 
+				pathLength, maxSocketPathLength, len(tt.codespaceName))
+		})
+	}
+}
+
+// TestSanitizeCodespaceNameForControlLength tests the length constraint
+func TestSanitizeCodespaceNameForControlLength(t *testing.T) {
+	tests := []struct {
+		name           string
+		input          string
+		maxLength      int
+		expectedMaxLen int
+	}{
+		{
+			name:           "short name stays unchanged",
+			input:          "short",
+			maxLength:      60,
+			expectedMaxLen: 60,
+		},
+		{
+			name:           "60 char name with 60 max stays unchanged",
+			input:          strings.Repeat("a", 60),
+			maxLength:      60,
+			expectedMaxLen: 60,
+		},
+		{
+			name:           "61 char name with 60 max gets truncated with hash",
+			input:          strings.Repeat("b", 61),
+			maxLength:      60,
+			expectedMaxLen: 60,
+		},
+		{
+			name:           "very long name with 60 max gets truncated with hash",
+			input:          strings.Repeat("c", 200),
+			maxLength:      60,
+			expectedMaxLen: 60,
+		},
+		{
+			name:           "short name with small max (24 bytes)",
+			input:          "my-codespace",
+			maxLength:      24,
+			expectedMaxLen: 24,
+		},
+		{
+			name:           "long name with small max (24 bytes) gets truncated",
+			input:          strings.Repeat("d", 100),
+			maxLength:      24,
+			expectedMaxLen: 24,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := sanitizeCodespaceNameForControl(tt.input, tt.maxLength)
+			
+			if len(result) > tt.expectedMaxLen {
+				t.Errorf("Result length %d exceeds expected max %d: %s", 
+					len(result), tt.expectedMaxLen, result)
+			}
+			
+			t.Logf("Input length: %d, Max: %d, Output length: %d, Output: %s", 
+				len(tt.input), tt.maxLength, len(result), result)
+		})
+	}
+}
+
+// TestSanitizeCodespaceNameUniqueness tests that different long names produce different results
+func TestSanitizeCodespaceNameUniqueness(t *testing.T) {
+	// Two different very long names should produce different sanitized names
+	name1 := strings.Repeat("a", 100) + "different"
+	name2 := strings.Repeat("a", 100) + "values"
+	maxLength := 24 // Small limit to force hashing
+	
+	result1 := sanitizeCodespaceNameForControl(name1, maxLength)
+	result2 := sanitizeCodespaceNameForControl(name2, maxLength)
+	
+	if result1 == result2 {
+		t.Errorf("Different long names produced same sanitized result:\n  %s\n  %s", result1, result2)
+	}
+	
+	if len(result1) > maxLength || len(result2) > maxLength {
+		t.Errorf("Results exceed max length %d: %s (%d), %s (%d)", 
+			maxLength, result1, len(result1), result2, len(result2))
+	}
+	
+	t.Logf("Name1 sanitized: %s (length: %d)", result1, len(result1))
+	t.Logf("Name2 sanitized: %s (length: %d)", result2, len(result2))
 }
