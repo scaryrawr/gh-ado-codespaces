@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"syscall"
@@ -85,11 +86,18 @@ func main() {
 	// Get SSH control path for multiplexing
 	controlPath := GetSSHControlPath(args.CodespaceName)
 	
+	// Establish background SSH master connection for multiplexing
+	// This creates a persistent master that subsequent connections can reuse
+	if err := establishSSHMaster(ctx, args.CodespaceName, controlPath); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to establish SSH master: %v\n", err)
+		// Continue anyway - operations will work without multiplexing
+	}
+	
 	// Build command line arguments for gh
 	ghFlags := args.BuildGHFlags()
 	
-	// Add SSH multiplexing options for the master connection
-	multiplexArgs := BuildSSHMultiplexArgs(controlPath, true)
+	// Add SSH multiplexing options (slave connections use existing master)
+	multiplexArgs := BuildSSHMultiplexArgs(controlPath, false)
 	
 	sshArgs := args.BuildSSHArgs(serverConfig.SocketPath, serverConfig.Port)
 
@@ -161,6 +169,32 @@ func sanitizeForFilename(name string) string {
 	}
 
 	return result
+}
+
+// establishSSHMaster creates a background SSH master connection for multiplexing
+// This allows subsequent non-interactive SSH commands to reuse the connection
+func establishSSHMaster(ctx context.Context, codespaceName string, controlPath string) error {
+	// Skip on Windows where multiplexing is disabled
+	if runtime.GOOS == "windows" {
+		return nil
+	}
+	
+	// Build arguments for background master connection
+	// -fN: go to background and don't execute commands (just establish connection)
+	multiplexArgs := BuildSSHMultiplexArgs(controlPath, true)
+	
+	args := []string{"codespace", "ssh", "--codespace", codespaceName}
+	args = append(args, multiplexArgs...)
+	args = append(args, "--", "-fN")
+	
+	// Start the background master connection
+	// This will authenticate and create the control socket, then go to background
+	_, stderr, err := gh.Exec(args...)
+	if err != nil {
+		return fmt.Errorf("failed to establish SSH master connection: %w\nStderr: %s", err, stderr.String())
+	}
+	
+	return nil
 }
 
 // uploadAndPrepareScripts uploads the port monitor script and makes all scripts executable

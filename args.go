@@ -179,7 +179,7 @@ func sanitizeCodespaceNameForControl(name string) string {
 	return result
 }
 
-// BuildSSHMultiplexArgs builds SSH multiplexing arguments for a given control path and mode
+// BuildSSHMultiplexArgs builds SSH multiplexing arguments for a given control path
 // On Windows, SSH multiplexing may not be fully supported, so this returns an empty slice
 func BuildSSHMultiplexArgs(controlPath string, isMaster bool) []string {
 	// Skip SSH multiplexing on Windows due to potential compatibility issues
@@ -191,9 +191,9 @@ func BuildSSHMultiplexArgs(controlPath string, isMaster bool) []string {
 	var args []string
 	
 	if isMaster {
-		// Master connection: auto-create the control socket if it doesn't exist
-		// and allow reuse if it already exists
-		args = append(args, "-o", "ControlMaster=auto")
+		// Master connection: explicitly create the control socket
+		// Use ControlMaster=yes to force creation of master
+		args = append(args, "-o", "ControlMaster=yes")
 	} else {
 		// Slave connection: use existing control socket but don't create one
 		args = append(args, "-o", "ControlMaster=no")

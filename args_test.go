@@ -298,7 +298,7 @@ func TestBuildSSHMultiplexArgs(t *testing.T) {
 			name:        "master connection",
 			controlPath: "/tmp/control-socket",
 			isMaster:    true,
-			wantMaster:  "ControlMaster=auto",
+			wantMaster:  "ControlMaster=yes",
 		},
 		{
 			name:        "slave connection",
@@ -360,24 +360,17 @@ func TestSSHMultiplexingIntegration(t *testing.T) {
 	// Test master connection args
 	masterArgs := BuildSSHMultiplexArgs(controlPath, true)
 	
-	// Verify master args structure
-	expectedMasterPairs := map[string]string{
-		"-o": "ControlMaster=auto",
-	}
-	
+	// Verify master args have ControlMaster=yes
+	foundYes := false
 	for i := 0; i < len(masterArgs)-1; i++ {
-		if masterArgs[i] == "-o" {
-			if expectedValue, exists := expectedMasterPairs["-o"]; exists {
-				if masterArgs[i+1] == expectedValue {
-					delete(expectedMasterPairs, "-o")
-					break
-				}
-			}
+		if masterArgs[i] == "-o" && masterArgs[i+1] == "ControlMaster=yes" {
+			foundYes = true
+			break
 		}
 	}
 	
-	if len(expectedMasterPairs) > 0 {
-		t.Errorf("Master args missing expected values: %v", expectedMasterPairs)
+	if !foundYes {
+		t.Errorf("Master args should contain ControlMaster=yes, got: %v", masterArgs)
 	}
 	
 	// Test slave connection args
@@ -394,6 +387,19 @@ func TestSSHMultiplexingIntegration(t *testing.T) {
 	
 	if !foundNo {
 		t.Errorf("Slave args should contain ControlMaster=no, got: %v", slaveArgs)
+	}
+	
+	// Verify both contain the control path
+	foundPath := false
+	for _, arg := range masterArgs {
+		if strings.Contains(arg, "ControlPath=") && strings.Contains(arg, codespaceName) {
+			foundPath = true
+			break
+		}
+	}
+	
+	if !foundPath {
+		t.Errorf("Args should contain ControlPath with codespace name, got: %v", masterArgs)
 	}
 }
 
@@ -438,52 +444,52 @@ func TestSanitizeCodespaceNameForControl(t *testing.T) {
 
 // TestBuildSSHMultiplexArgsWindows tests that multiplexing is disabled on Windows
 func TestBuildSSHMultiplexArgsWindows(t *testing.T) {
-// This test verifies the behavior on different platforms
-controlPath := "/tmp/test-socket"
-
-// Get args for both master and slave
-masterArgs := BuildSSHMultiplexArgs(controlPath, true)
-slaveArgs := BuildSSHMultiplexArgs(controlPath, false)
-
-// On Windows, both should return empty slices
-// On other platforms, they should contain multiplexing options
-if runtime.GOOS == "windows" {
-if len(masterArgs) != 0 {
-t.Errorf("On Windows, BuildSSHMultiplexArgs(master) should return empty slice, got %v", masterArgs)
-}
-if len(slaveArgs) != 0 {
-t.Errorf("On Windows, BuildSSHMultiplexArgs(slave) should return empty slice, got %v", slaveArgs)
-}
-} else {
-// On non-Windows platforms, verify multiplexing args are present
-if len(masterArgs) == 0 {
-t.Error("On non-Windows platforms, BuildSSHMultiplexArgs(master) should return multiplexing args")
-}
-if len(slaveArgs) == 0 {
-t.Error("On non-Windows platforms, BuildSSHMultiplexArgs(slave) should return multiplexing args")
-}
-
-// Verify ControlMaster settings
-foundMaster := false
-for _, arg := range masterArgs {
-if arg == "ControlMaster=auto" {
-foundMaster = true
-break
-}
-}
-if !foundMaster {
-t.Error("Master args should contain ControlMaster=auto on non-Windows platforms")
-}
-
-foundNo := false
-for _, arg := range slaveArgs {
-if arg == "ControlMaster=no" {
-foundNo = true
-break
-}
-}
-if !foundNo {
-t.Error("Slave args should contain ControlMaster=no on non-Windows platforms")
-}
-}
+	// This test verifies the behavior on different platforms
+	controlPath := "/tmp/test-socket"
+	
+	// Get args for both master and slave
+	masterArgs := BuildSSHMultiplexArgs(controlPath, true)
+	slaveArgs := BuildSSHMultiplexArgs(controlPath, false)
+	
+	// On Windows, both should return empty slices
+	// On other platforms, they should contain multiplexing options
+	if runtime.GOOS == "windows" {
+		if len(masterArgs) != 0 {
+			t.Errorf("On Windows, BuildSSHMultiplexArgs(master) should return empty slice, got %v", masterArgs)
+		}
+		if len(slaveArgs) != 0 {
+			t.Errorf("On Windows, BuildSSHMultiplexArgs(slave) should return empty slice, got %v", slaveArgs)
+		}
+	} else {
+		// On non-Windows platforms, verify multiplexing args are present
+		if len(masterArgs) == 0 {
+			t.Error("On non-Windows platforms, BuildSSHMultiplexArgs(master) should return multiplexing args")
+		}
+		if len(slaveArgs) == 0 {
+			t.Error("On non-Windows platforms, BuildSSHMultiplexArgs(slave) should return multiplexing args")
+		}
+		
+		// Verify ControlMaster settings
+		foundYes := false
+		for _, arg := range masterArgs {
+			if arg == "ControlMaster=yes" {
+				foundYes = true
+				break
+			}
+		}
+		if !foundYes {
+			t.Error("Master args should contain ControlMaster=yes on non-Windows platforms")
+		}
+		
+		foundNo := false
+		for _, arg := range slaveArgs {
+			if arg == "ControlMaster=no" {
+				foundNo = true
+				break
+			}
+		}
+		if !foundNo {
+			t.Error("Slave args should contain ControlMaster=no on non-Windows platforms")
+		}
+	}
 }
