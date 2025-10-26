@@ -1,8 +1,13 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"flag"
 	"fmt"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -136,4 +141,105 @@ func (args *CommandLineArgs) BuildSSHArgs(socketPath string, port int) []string 
 	sshArgs = append(sshArgs, args.RemainingArgs...)
 
 	return sshArgs
+}
+
+// GetSSHControlPath returns the path for the SSH control socket for a given codespace
+func GetSSHControlPath(codespaceName string) string {
+	// Use ~/.ssh/gh/ for control sockets - this is:
+	// 1. Shorter than temp directory paths (especially on macOS)
+	// 2. More appropriate location for SSH-related files
+	// 3. SSH automatically cleans up stale control sockets
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		// Fallback to temp directory if home directory is not available
+		homeDir = os.TempDir()
+	}
+	
+	controlDir := filepath.Join(homeDir, ".ssh", "gh")
+	
+	// Create the directory if it doesn't exist
+	os.MkdirAll(controlDir, 0700)
+	
+	// Calculate safe codespace name length based on actual control directory
+	// Unix socket paths are limited to 104 bytes on macOS/BSD, 108 on Linux
+	const socketPathLimit = 104 // Use conservative limit for macOS/BSD
+	basePath := controlDir + string(filepath.Separator)
+	maxNameLength := socketPathLimit - len(basePath) - 1 // -1 for safety margin
+	
+	// Sanitize codespace name for use in filename with appropriate length limit
+	safeName := sanitizeCodespaceNameForControl(codespaceName, maxNameLength)
+	return filepath.Join(controlDir, safeName)
+}
+
+// sanitizeCodespaceNameForControl sanitizes a codespace name for use in control socket path
+// To avoid exceeding Unix socket path limits (typically 104-108 bytes), we ensure the
+// resulting path stays well under this limit by using a hash for long names
+func sanitizeCodespaceNameForControl(name string, maxLength int) string {
+	if name == "" {
+		return "unknown"
+	}
+	
+	// Replace problematic characters with dashes
+	result := strings.ReplaceAll(name, "/", "-")
+	result = strings.ReplaceAll(result, "\\", "-")
+	result = strings.ReplaceAll(result, ":", "-")
+	result = strings.ReplaceAll(result, " ", "-")
+	result = strings.ReplaceAll(result, "*", "-")
+	result = strings.ReplaceAll(result, "?", "-")
+	
+	// Remove leading/trailing dashes
+	result = strings.Trim(result, "-")
+	
+	// If the name fits within the limit, use it as-is
+	if len(result) <= maxLength {
+		return result
+	}
+	
+	// For longer names, use truncation + hash for uniqueness
+	// Reserve 9 bytes for dash + 8-char hash
+	const hashLength = 8
+	prefixLength := maxLength - hashLength - 1 // -1 for dash separator
+	if prefixLength < 1 {
+		prefixLength = 1
+	}
+	
+	// Use first N chars + 8-char hash for uniqueness
+	hash := sha256.Sum256([]byte(result))
+	hashStr := hex.EncodeToString(hash[:])[:hashLength]
+	
+	if prefixLength >= len(result) {
+		return result[:len(result)] + "-" + hashStr
+	}
+	return result[:prefixLength] + "-" + hashStr
+}
+
+// BuildSSHMultiplexArgs builds SSH multiplexing arguments for a given control path
+// isMaster: true for the dedicated background master, false for connections that reuse it
+// On Windows, SSH multiplexing may not be fully supported, so this returns an empty slice
+func BuildSSHMultiplexArgs(controlPath string, isMaster bool) []string {
+	// Skip SSH multiplexing on Windows due to potential compatibility issues
+	// with OpenSSH's ControlMaster/ControlPath implementation
+	if runtime.GOOS == "windows" {
+		return []string{}
+	}
+	
+	var args []string
+	
+	if isMaster {
+		// Master connection: explicitly create the control socket
+		// Use ControlMaster=yes to force creation of master
+		args = append(args, "-o", "ControlMaster=yes")
+	} else {
+		// Slave connection: use existing control socket but don't create one
+		args = append(args, "-o", "ControlMaster=no")
+	}
+	
+	// Set the control path
+	args = append(args, "-o", fmt.Sprintf("ControlPath=%s", controlPath))
+	
+	// Set a reasonable persist time (10 minutes after last use)
+	// This keeps the master connection alive even after the initiating connection closes
+	args = append(args, "-o", "ControlPersist=600")
+	
+	return args
 }

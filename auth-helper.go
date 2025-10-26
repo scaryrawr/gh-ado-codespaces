@@ -41,12 +41,7 @@ func UploadAuthHelpers(ctx context.Context, codespaceName string) error {
 		return fmt.Errorf("error copying Azure helper script to codespace: %w\nStderr: %s", err, stderr.String())
 	}
 
-	// Make the uploaded scripts executable
-	chmodArgs := []string{"codespace", "ssh", "--codespace", codespaceName, "--", "chmod", "+x", "~/ado-auth-helper", "~/azure-auth-helper"}
-	_, stderr, err = gh.Exec(chmodArgs...)
-	if err != nil {
-		return fmt.Errorf("error making auth helper scripts executable: %w\nStderr: %s", err, stderr.String())
-	}
+	// Note: chmod is done by uploadAndPrepareScripts to consolidate SSH calls
 
 	fmt.Println("ADO and Azure auth helpers uploaded to the codespace and made executable")
 	return nil
