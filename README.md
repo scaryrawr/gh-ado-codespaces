@@ -158,7 +158,7 @@ This project includes a comprehensive unit test suite that covers:
   - Azure subscription ID format validation
   - Command line flag building for `gh codespace ssh`
   - SSH argument construction with browser service integration
-  
+
 - **Configuration file handling** (`config_test.go`)
   - Azure subscription storage and retrieval per GitHub account
   - JSON configuration file loading and saving
