@@ -105,6 +105,24 @@ The extension leverages Azure CLI credentials on your local machine to authentic
 2. An SSH connection forwards this service to a Unix socket in the codespace
 3. Development tools inside the codespace request tokens through the ADO Auth Helper
 
+### Browser Opening
+
+The extension provides automatic browser opening from your codespace to your local machine:
+
+1. When you connect, a browser opener script is uploaded to your codespace
+2. The `BROWSER` environment variable is automatically set to point to this script
+3. When any tool in the codespace tries to open a URL (e.g., via `xdg-open`, `python -m webbrowser`, etc.), the URL is captured
+4. The URL is sent to your local machine through a reverse SSH tunnel
+5. Your local browser opens automatically with the requested URL
+
+This is particularly useful for:
+- Opening documentation links from CLI tools
+- Viewing web-based development servers running in your codespace
+- Accessing OAuth flows and authentication pages
+- Opening links from terminal-based applications
+
+The browser opener works cross-platform and will use your default browser on Windows, macOS, and Linux.
+
 ### Port Forwarding
 
 The automatic port forwarding system works in two directions:
@@ -139,12 +157,18 @@ This project includes a comprehensive unit test suite that covers:
 - **Command line argument parsing and validation** (`args_test.go`)
   - Azure subscription ID format validation
   - Command line flag building for `gh codespace ssh`
-  - SSH argument construction
+  - SSH argument construction with browser service integration
   
 - **Configuration file handling** (`config_test.go`)
   - Azure subscription storage and retrieval per GitHub account
   - JSON configuration file loading and saving
   - Error handling for malformed configuration files
+
+- **Browser opening functionality** (`browser_test.go`)
+  - Browser service creation and lifecycle management
+  - Cross-platform URL opening support
+  - Browser message parsing and handling
+  - SSH argument integration with browser port forwarding
 
 - **Utility functions** (`main_test.go`)
   - Filename sanitization for session directories  
