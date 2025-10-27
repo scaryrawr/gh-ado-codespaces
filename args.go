@@ -115,12 +115,18 @@ func (args *CommandLineArgs) BuildGHFlags() []string {
 }
 
 // BuildSSHArgs builds the arguments for the SSH command
-func (args *CommandLineArgs) BuildSSHArgs(socketPath string, port int) []string {
+func (args *CommandLineArgs) BuildSSHArgs(socketPath string, port int, browserService *BrowserService) []string {
 	sshArgs := []string{"--"} // Start with the separator
 
 	// Add the auth socket forward
 	forwardSpec := fmt.Sprintf("%s:localhost:%d", socketPath, port)
 	sshArgs = append(sshArgs, "-R", forwardSpec)
+
+	// Add browser port forward if browser service is available
+	if browserService != nil {
+		browserForwardSpec := fmt.Sprintf("%d:localhost:%d", browserService.Port, browserService.Port)
+		sshArgs = append(sshArgs, "-R", browserForwardSpec)
+	}
 
 	// Detect and add reverse port forwards for local AI services
 	boundForwards := GetBoundReverseForwards()
@@ -133,7 +139,12 @@ func (args *CommandLineArgs) BuildSSHArgs(socketPath string, port int) []string 
 	sshArgs = append(sshArgs, "-t")
 
 	// Append remaining user-provided arguments (ssh flags or command)
-	sshArgs = append(sshArgs, args.RemainingArgs...)
+	if len(args.RemainingArgs) > 0 {
+		sshArgs = append(sshArgs, args.RemainingArgs...)
+	} else if browserService != nil {
+		// If no command specified and browser service is active, set up environment
+		sshArgs = append(sshArgs, fmt.Sprintf("export BROWSER='$HOME/browser-opener.sh' GH_ADO_CODESPACES_BROWSER_PORT=%d; bash -l", browserService.Port))
+	}
 
 	return sshArgs
 }
