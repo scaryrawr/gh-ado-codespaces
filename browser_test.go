@@ -109,16 +109,39 @@ func TestBuildSSHArgsWithBrowserService(t *testing.T) {
 
 	// Verify browser port forward is included
 	expectedForward := fmt.Sprintf("%d:localhost:%d", service.Port, service.Port)
-	found := false
+	foundForward := false
 	for i := 0; i < len(sshArgs)-1; i++ {
 		if sshArgs[i] == "-R" && sshArgs[i+1] == expectedForward {
-			found = true
+			foundForward = true
 			break
 		}
 	}
 
-	if !found {
+	if !foundForward {
 		t.Errorf("Browser port forward not found in SSH args. Expected: %s, Got args: %v", expectedForward, sshArgs)
+	}
+
+	// Verify SetEnv options are included
+	foundBrowserEnv := false
+	foundPortEnv := false
+	expectedBrowserEnv := "SetEnv BROWSER=$HOME/browser-opener.sh"
+	expectedPortEnv := fmt.Sprintf("SetEnv GH_ADO_CODESPACES_BROWSER_PORT=%d", service.Port)
+	
+	for i := 0; i < len(sshArgs)-1; i++ {
+		if sshArgs[i] == "-o" && sshArgs[i+1] == expectedBrowserEnv {
+			foundBrowserEnv = true
+		}
+		if sshArgs[i] == "-o" && sshArgs[i+1] == expectedPortEnv {
+			foundPortEnv = true
+		}
+	}
+
+	if !foundBrowserEnv {
+		t.Errorf("BROWSER SetEnv option not found in SSH args. Expected: -o %s, Got args: %v", expectedBrowserEnv, sshArgs)
+	}
+
+	if !foundPortEnv {
+		t.Errorf("GH_ADO_CODESPACES_BROWSER_PORT SetEnv option not found in SSH args. Expected: -o %s, Got args: %v", expectedPortEnv, sshArgs)
 	}
 }
 
