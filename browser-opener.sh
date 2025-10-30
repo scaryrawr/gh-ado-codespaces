@@ -5,9 +5,10 @@
 #
 # To use this script, add to your shell configuration (e.g., ~/.bashrc or ~/.zshrc):
 #   export BROWSER="$HOME/browser-opener.sh"
-#   export GH_ADO_CODESPACES_BROWSER_PORT=<port>  # Set by gh-ado-codespaces
+#
+# Note: The port is automatically configured when this script is uploaded
 
-BROWSER_PORT="${GH_ADO_CODESPACES_BROWSER_PORT:-19876}"
+BROWSER_PORT="__BROWSER_PORT__"
 
 # Get the URL from arguments
 URL="$1"

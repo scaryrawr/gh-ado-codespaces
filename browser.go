@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 
 	"github.com/cli/go-gh/v2"
@@ -120,7 +121,8 @@ func (bs *BrowserService) Stop() {
 }
 
 // UploadBrowserOpenerScript copies the browser-opener.sh script to the codespace
-func UploadBrowserOpenerScript(ctx context.Context, codespaceName string) error {
+// with the browser port configured
+func UploadBrowserOpenerScript(ctx context.Context, codespaceName string, browserPort int) error {
 	// Create a temporary file with the embedded script content
 	tempFile, err := os.CreateTemp("", "browser-opener*.sh")
 	if err != nil {
@@ -128,8 +130,11 @@ func UploadBrowserOpenerScript(ctx context.Context, codespaceName string) error 
 	}
 	defer os.Remove(tempFile.Name())
 
-	// Write the embedded script to the temporary file
-	if _, err = tempFile.WriteString(browserOpenerScript); err != nil {
+	// Replace the port placeholder with the actual port
+	scriptContent := strings.Replace(browserOpenerScript, "__BROWSER_PORT__", fmt.Sprintf("%d", browserPort), 1)
+
+	// Write the modified script to the temporary file
+	if _, err = tempFile.WriteString(scriptContent); err != nil {
 		return fmt.Errorf("failed to write script to temporary file: %w", err)
 	}
 	tempFile.Close()
@@ -148,6 +153,6 @@ func UploadBrowserOpenerScript(ctx context.Context, codespaceName string) error 
 		return fmt.Errorf("error making script executable: %w\nStderr: %s", err, stderr.String())
 	}
 
-	logDebug("Browser opener script uploaded and made executable")
+	logDebug("Browser opener script uploaded and made executable with port %d", browserPort)
 	return nil
 }

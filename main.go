@@ -111,13 +111,12 @@ func main() {
 
 	// Upload browser opener script if browser service is running
 	if browserService != nil {
-		if err := UploadBrowserOpenerScript(ctx, args.CodespaceName); err != nil {
+		if err := UploadBrowserOpenerScript(ctx, args.CodespaceName, browserService.Port); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to upload browser opener script: %v\n", err)
 		} else {
 			// Print instructions for user to configure BROWSER environment variable
 			fmt.Fprintf(os.Stderr, "\nBrowser opener available! To enable browser forwarding, add to your shell config:\n")
-			fmt.Fprintf(os.Stderr, "  export BROWSER=\"$HOME/browser-opener.sh\"\n")
-			fmt.Fprintf(os.Stderr, "  export GH_ADO_CODESPACES_BROWSER_PORT=%d\n\n", browserService.Port)
+			fmt.Fprintf(os.Stderr, "  export BROWSER=\"$HOME/browser-opener.sh\"\n\n")
 		}
 	}
 
