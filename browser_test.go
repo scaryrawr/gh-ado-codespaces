@@ -2,9 +2,10 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net"
+	"net/http"
+	"net/url"
 	"testing"
 	"time"
 )
@@ -26,9 +27,13 @@ func TestNewBrowserService(t *testing.T) {
 	if service.listener == nil {
 		t.Error("Browser service listener should not be nil")
 	}
+
+	if service.server == nil {
+		t.Error("Browser service HTTP server should not be nil")
+	}
 }
 
-func TestBrowserServiceHandlesMessage(t *testing.T) {
+func TestBrowserServiceHandlesHTTPRequest(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -38,39 +43,26 @@ func TestBrowserServiceHandlesMessage(t *testing.T) {
 	}
 	defer service.Stop()
 
-	// Send a test message to the browser service
-	// Note: We can't actually test browser.OpenURL without mocking,
-	// but we can test that the service accepts and processes messages
-	done := make(chan bool)
-	go func() {
-		time.Sleep(100 * time.Millisecond)
-		conn, err := net.Dial("tcp", fmt.Sprintf("localhost:%d", service.Port))
-		if err != nil {
-			t.Errorf("Failed to connect to browser service: %v", err)
-			done <- false
-			return
-		}
-		defer conn.Close()
+	// Wait a bit for the server to start
+	time.Sleep(100 * time.Millisecond)
 
-		msg := BrowserMessage{
-			Type:   "browser",
-			Action: "open",
-			URL:    "https://example.com",
-		}
-		msgBytes, _ := json.Marshal(msg)
-		conn.Write(msgBytes)
-		conn.Write([]byte("\n"))
-		done <- true
-	}()
+	// Send a test HTTP POST request to the browser service
+	testURL := "https://example.com"
+	resp, err := http.Post(
+		fmt.Sprintf("http://localhost:%d/open?url=%s", service.Port, url.QueryEscape(testURL)),
+		"application/x-www-form-urlencoded",
+		nil,
+	)
+	
+	if err != nil {
+		t.Fatalf("Failed to send HTTP request: %v", err)
+	}
+	defer resp.Body.Close()
 
-	// Wait for the message to be sent or timeout
-	select {
-	case success := <-done:
-		if !success {
-			t.Error("Failed to send message")
-		}
-	case <-time.After(5 * time.Second):
-		t.Error("Test timed out")
+	// We expect it to fail to open the browser (no browser in CI), but the HTTP request should succeed
+	// The status could be 500 if browser opening fails, but that's okay for this test
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusInternalServerError {
+		t.Errorf("Unexpected status code: %d", resp.StatusCode)
 	}
 }
 
@@ -121,27 +113,12 @@ func TestBuildSSHArgsWithBrowserService(t *testing.T) {
 		t.Errorf("Browser port forward not found in SSH args. Expected: %s, Got args: %v", expectedForward, sshArgs)
 	}
 
-	// Verify SetEnv options are included
-	foundBrowserEnv := false
-	foundPortEnv := false
-	expectedBrowserEnv := "SetEnv BROWSER=$HOME/browser-opener.sh"
-	expectedPortEnv := fmt.Sprintf("SetEnv GH_ADO_CODESPACES_BROWSER_PORT=%d", service.Port)
-	
+	// Verify SetEnv options are NOT included (users configure BROWSER themselves)
 	for i := 0; i < len(sshArgs)-1; i++ {
-		if sshArgs[i] == "-o" && sshArgs[i+1] == expectedBrowserEnv {
-			foundBrowserEnv = true
+		if sshArgs[i] == "-o" && (sshArgs[i+1] == "SetEnv BROWSER=$HOME/browser-opener.sh" || 
+			sshArgs[i+1] == fmt.Sprintf("SetEnv GH_ADO_CODESPACES_BROWSER_PORT=%d", service.Port)) {
+			t.Errorf("SetEnv options should not be in SSH args anymore (users configure BROWSER themselves). Found: %s", sshArgs[i+1])
 		}
-		if sshArgs[i] == "-o" && sshArgs[i+1] == expectedPortEnv {
-			foundPortEnv = true
-		}
-	}
-
-	if !foundBrowserEnv {
-		t.Errorf("BROWSER SetEnv option not found in SSH args. Expected: -o %s, Got args: %v", expectedBrowserEnv, sshArgs)
-	}
-
-	if !foundPortEnv {
-		t.Errorf("GH_ADO_CODESPACES_BROWSER_PORT SetEnv option not found in SSH args. Expected: -o %s, Got args: %v", expectedPortEnv, sshArgs)
 	}
 }
 
@@ -149,80 +126,68 @@ func TestBuildSSHArgsWithoutBrowserService(t *testing.T) {
 	args := CommandLineArgs{}
 	sshArgs := args.BuildSSHArgs("/tmp/test.sock", 8080, nil)
 
-	// Verify no browser-specific args are included when service is nil
+	// Verify no browser-specific port forwards are included when service is nil
 	for i := 0; i < len(sshArgs)-1; i++ {
 		if sshArgs[i] == "-R" {
-			// Make sure it's not a browser port (should be the auth socket)
+			// Make sure it's not a browser port (should be the auth socket or AI services)
 			if sshArgs[i+1] != "/tmp/test.sock:localhost:8080" {
 				// This is fine - could be other forwards like AI services
 				continue
 			}
 		}
 	}
+}
 
-	// Verify that the BROWSER export command is not in the args when service is nil and no remaining args
-	args2 := CommandLineArgs{RemainingArgs: []string{}}
-	sshArgs2 := args2.BuildSSHArgs("/tmp/test.sock", 8080, nil)
-	
-	for _, arg := range sshArgs2 {
-		if len(arg) > 0 && arg[0:1] == "e" && len(arg) > 6 && arg[0:7] == "export " {
-			t.Errorf("Should not have export command when browser service is nil and no remaining args: %v", arg)
-		}
+func TestHTTPEndpointMethodValidation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	service, err := NewBrowserService(ctx)
+	if err != nil {
+		t.Fatalf("Failed to create browser service: %v", err)
+	}
+	defer service.Stop()
+
+	// Wait a bit for the server to start
+	time.Sleep(100 * time.Millisecond)
+
+	// Test that GET requests are rejected
+	resp, err := http.Get(fmt.Sprintf("http://localhost:%d/open?url=https://example.com", service.Port))
+	if err != nil {
+		t.Fatalf("Failed to send GET request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusMethodNotAllowed {
+		t.Errorf("Expected status %d for GET request, got %d", http.StatusMethodNotAllowed, resp.StatusCode)
 	}
 }
 
-func TestBrowserMessageParsing(t *testing.T) {
-	tests := []struct {
-		name      string
-		jsonStr   string
-		wantError bool
-		expected  BrowserMessage
-	}{
-		{
-			name:      "valid message",
-			jsonStr:   `{"type":"browser","action":"open","url":"https://example.com"}`,
-			wantError: false,
-			expected: BrowserMessage{
-				Type:   "browser",
-				Action: "open",
-				URL:    "https://example.com",
-			},
-		},
-		{
-			name:      "invalid json",
-			jsonStr:   `{"type":"browser","action":"open"`,
-			wantError: true,
-		},
-		{
-			name:      "missing url",
-			jsonStr:   `{"type":"browser","action":"open","url":""}`,
-			wantError: false,
-			expected: BrowserMessage{
-				Type:   "browser",
-				Action: "open",
-				URL:    "",
-			},
-		},
-	}
+func TestHTTPEndpointMissingURL(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var msg BrowserMessage
-			err := json.Unmarshal([]byte(tt.jsonStr), &msg)
-			
-			if tt.wantError && err == nil {
-				t.Error("Expected error but got none")
-			}
-			
-			if !tt.wantError && err != nil {
-				t.Errorf("Unexpected error: %v", err)
-			}
-			
-			if !tt.wantError && err == nil {
-				if msg.Type != tt.expected.Type || msg.Action != tt.expected.Action || msg.URL != tt.expected.URL {
-					t.Errorf("Message mismatch. Got %+v, want %+v", msg, tt.expected)
-				}
-			}
-		})
+	service, err := NewBrowserService(ctx)
+	if err != nil {
+		t.Fatalf("Failed to create browser service: %v", err)
+	}
+	defer service.Stop()
+
+	// Wait a bit for the server to start
+	time.Sleep(100 * time.Millisecond)
+
+	// Test that requests without URL parameter are rejected
+	resp, err := http.Post(
+		fmt.Sprintf("http://localhost:%d/open", service.Port),
+		"application/x-www-form-urlencoded",
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("Failed to send POST request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("Expected status %d for request without URL, got %d", http.StatusBadRequest, resp.StatusCode)
 	}
 }

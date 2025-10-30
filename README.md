@@ -107,13 +107,19 @@ The extension leverages Azure CLI credentials on your local machine to authentic
 
 ### Browser Opening
 
-The extension provides automatic browser opening from your codespace to your local machine:
+The extension provides browser opening from your codespace to your local machine:
 
-1. When you connect, a browser opener script is uploaded to your codespace
-2. The `BROWSER` environment variable is automatically set to point to this script
-3. When any tool in the codespace tries to open a URL (e.g., via `xdg-open`, `python -m webbrowser`, etc.), the URL is captured
-4. The URL is sent to your local machine through a reverse SSH tunnel
-5. Your local browser opens automatically with the requested URL
+1. When you connect, a browser opener script is uploaded to your codespace at `~/browser-opener.sh`
+2. A local HTTP service is started that listens for browser open requests
+3. The service port is forwarded to the codespace via SSH reverse port forwarding
+4. Users can configure their shell to use the browser opener by adding to their shell config (e.g., `~/.bashrc` or `~/.zshrc`):
+   ```bash
+   export BROWSER="$HOME/browser-opener.sh"
+   export GH_ADO_CODESPACES_BROWSER_PORT=<port>  # The port will be displayed when you connect
+   ```
+5. When any tool in the codespace tries to open a URL (e.g., via `xdg-open`, `python -m webbrowser`, etc.), it uses the `BROWSER` environment variable
+6. The script sends an HTTP request to the local machine with the URL
+7. Your local browser opens automatically with the requested URL
 
 This is particularly useful for:
 - Opening documentation links from CLI tools
@@ -122,6 +128,8 @@ This is particularly useful for:
 - Opening links from terminal-based applications
 
 The browser opener works cross-platform and will use your default browser on Windows, macOS, and Linux.
+
+**Note:** You'll need to manually configure the `BROWSER` environment variable in your shell configuration. The extension displays the required commands when you connect.
 
 ### Port Forwarding
 
@@ -165,9 +173,9 @@ This project includes a comprehensive unit test suite that covers:
   - Error handling for malformed configuration files
 
 - **Browser opening functionality** (`browser_test.go`)
-  - Browser service creation and lifecycle management
-  - Cross-platform URL opening support
-  - Browser message parsing and handling
+  - HTTP-based browser service creation and lifecycle management
+  - Cross-platform URL opening support via HTTP endpoint
+  - HTTP method and parameter validation
   - SSH argument integration with browser port forwarding
 
 - **Utility functions** (`main_test.go`)

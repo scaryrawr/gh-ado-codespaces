@@ -1,12 +1,11 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	_ "embed"
-	"encoding/json"
 	"fmt"
 	"net"
+	"net/http"
 	"os"
 	"sync"
 
@@ -17,16 +16,10 @@ import (
 //go:embed browser-opener.sh
 var browserOpenerScript string
 
-// BrowserMessage represents a JSON message from browser-opener.sh
-type BrowserMessage struct {
-	Type   string `json:"type"`
-	Action string `json:"action"`
-	URL    string `json:"url"`
-}
-
 // BrowserService manages the browser opener service
 type BrowserService struct {
 	Port     int
+	server   *http.Server
 	listener net.Listener
 	ctx      context.Context
 	cancel   context.CancelFunc
@@ -43,10 +36,10 @@ func NewBrowserService(ctx context.Context) (*BrowserService, error) {
 
 	// Get the actual port that was assigned
 	browserPort := listener.Addr().(*net.TCPAddr).Port
-	logDebug("Local browser listener created on port: %d", browserPort)
+	logDebug("Local browser HTTP service created on port: %d", browserPort)
 
 	serviceCtx, cancel := context.WithCancel(ctx)
-	
+
 	service := &BrowserService{
 		Port:     browserPort,
 		listener: listener,
@@ -54,85 +47,72 @@ func NewBrowserService(ctx context.Context) (*BrowserService, error) {
 		cancel:   cancel,
 	}
 
-	// Start accepting connections
+	// Create HTTP handler
+	mux := http.NewServeMux()
+	mux.HandleFunc("/open", service.handleOpenURL)
+
+	// Create HTTP server
+	service.server = &http.Server{
+		Handler: mux,
+	}
+
+	// Start serving in a goroutine
 	service.wg.Add(1)
-	go service.acceptLoop()
+	go service.serve()
 
 	return service, nil
 }
 
-// acceptLoop accepts and handles browser connections
-func (bs *BrowserService) acceptLoop() {
+// serve starts the HTTP server
+func (bs *BrowserService) serve() {
 	defer bs.wg.Done()
 	defer bs.listener.Close()
 
-	// Create a channel for accepting connections
-	connChan := make(chan net.Conn)
-	errChan := make(chan error)
+	logDebug("Browser HTTP service starting on port %d", bs.Port)
 
-	// Start accept goroutine
-	go func() {
-		for {
-			conn, err := bs.listener.Accept()
-			if err != nil {
-				errChan <- err
-				return
-			}
-			connChan <- conn
-		}
-	}()
-
-	for {
-		select {
-		case <-bs.ctx.Done():
-			logDebug("Browser service context canceled, stopping accept loop")
-			return
-		case conn := <-connChan:
-			// Handle the connection in a goroutine
-			go bs.handleConnection(conn)
-		case err := <-errChan:
-			if bs.ctx.Err() != nil {
-				return
-			}
-			logDebug("Error accepting browser connection: %v", err)
-			return
-		}
+	err := bs.server.Serve(bs.listener)
+	if err != nil && err != http.ErrServerClosed {
+		logDebug("Browser HTTP service error: %v", err)
 	}
+
+	logDebug("Browser HTTP service stopped")
 }
 
-// handleConnection handles a single browser open request
-func (bs *BrowserService) handleConnection(conn net.Conn) {
-	defer conn.Close()
-
-	scanner := bufio.NewScanner(conn)
-	if scanner.Scan() {
-		line := scanner.Text()
-
-		var msg BrowserMessage
-		if err := json.Unmarshal([]byte(line), &msg); err != nil {
-			logDebug("Error parsing browser message: %v", err)
-			return
-		}
-
-		if msg.Type == "browser" && msg.Action == "open" && msg.URL != "" {
-			logDebug("Opening URL in browser: %s", msg.URL)
-
-			// Open the URL in the default browser
-			if err := browser.OpenURL(msg.URL); err != nil {
-				logDebug("Error opening browser: %v", err)
-				fmt.Fprintf(os.Stderr, "Warning: failed to open browser for URL: %s (%v)\n", msg.URL, err)
-			} else {
-				logDebug("Successfully opened URL in browser")
-				fmt.Fprintf(os.Stderr, "Opened in browser: %s\n", msg.URL)
-			}
-		}
+// handleOpenURL handles HTTP requests to open URLs
+func (bs *BrowserService) handleOpenURL(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
 	}
+
+	// Get URL from query parameter
+	url := r.URL.Query().Get("url")
+	if url == "" {
+		http.Error(w, "Missing url parameter", http.StatusBadRequest)
+		return
+	}
+
+	logDebug("Opening URL in browser: %s", url)
+
+	// Open the URL in the default browser
+	if err := browser.OpenURL(url); err != nil {
+		logDebug("Error opening browser: %v", err)
+		fmt.Fprintf(os.Stderr, "Warning: failed to open browser for URL: %s (%v)\n", url, err)
+		http.Error(w, "Failed to open browser", http.StatusInternalServerError)
+		return
+	}
+
+	logDebug("Successfully opened URL in browser")
+	fmt.Fprintf(os.Stderr, "Opened in browser: %s\n", url)
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("OK"))
 }
 
 // Stop stops the browser service
 func (bs *BrowserService) Stop() {
 	if bs.cancel != nil {
 		logDebug("BrowserService: Stop() called")
+		bs.server.Shutdown(bs.ctx)
 		bs.cancel()
 		bs.wg.Wait()
 		logDebug("BrowserService: stopped")

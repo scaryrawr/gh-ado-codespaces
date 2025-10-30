@@ -126,11 +126,6 @@ func (args *CommandLineArgs) BuildSSHArgs(socketPath string, port int, browserSe
 	if browserService != nil {
 		browserForwardSpec := fmt.Sprintf("%d:localhost:%d", browserService.Port, browserService.Port)
 		sshArgs = append(sshArgs, "-R", browserForwardSpec)
-		
-		// Set browser environment variables using SSH SetEnv option
-		// This allows the user's default shell to be used instead of forcing bash
-		sshArgs = append(sshArgs, "-o", fmt.Sprintf("SetEnv BROWSER=$HOME/browser-opener.sh"))
-		sshArgs = append(sshArgs, "-o", fmt.Sprintf("SetEnv GH_ADO_CODESPACES_BROWSER_PORT=%d", browserService.Port))
 	}
 
 	// Detect and add reverse port forwards for local AI services
