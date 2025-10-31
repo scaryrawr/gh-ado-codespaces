@@ -115,12 +115,18 @@ func (args *CommandLineArgs) BuildGHFlags() []string {
 }
 
 // BuildSSHArgs builds the arguments for the SSH command
-func (args *CommandLineArgs) BuildSSHArgs(socketPath string, port int) []string {
+func (args *CommandLineArgs) BuildSSHArgs(socketPath string, port int, browserService *BrowserService) []string {
 	sshArgs := []string{"--"} // Start with the separator
 
 	// Add the auth socket forward
 	forwardSpec := fmt.Sprintf("%s:localhost:%d", socketPath, port)
 	sshArgs = append(sshArgs, "-R", forwardSpec)
+
+	// Add browser port forward if browser service is available
+	if browserService != nil {
+		browserForwardSpec := fmt.Sprintf("%d:localhost:%d", browserService.Port, browserService.Port)
+		sshArgs = append(sshArgs, "-R", browserForwardSpec)
+	}
 
 	// Detect and add reverse port forwards for local AI services
 	boundForwards := GetBoundReverseForwards()

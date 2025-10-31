@@ -81,9 +81,20 @@ func main() {
 
 	// Initialize session ID now that we have the codespace name
 	initializeSessionID(args.CodespaceName)
+
+	// Start the browser service early so we can include its port in SSH args
+	var browserService *BrowserService
+	browserService, err = NewBrowserService(ctx)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to start browser service: %v\n", err)
+		// Continue anyway, SSH will still work without browser forwarding
+	} else {
+		defer browserService.Stop()
+	}
+
 	// Build command line arguments for gh
 	ghFlags := args.BuildGHFlags()
-	sshArgs := args.BuildSSHArgs(serverConfig.SocketPath, serverConfig.Port)
+	sshArgs := args.BuildSSHArgs(serverConfig.SocketPath, serverConfig.Port, browserService)
 
 	// Combine all arguments
 	finalArgs := append(ghFlags, sshArgs...)
@@ -96,6 +107,17 @@ func main() {
 	// Upload port monitor script and make all scripts executable in a single SSH call
 	if err := uploadAndPrepareScripts(ctx, args.CodespaceName); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to prepare scripts: %v\n", err)
+	}
+
+	// Upload browser opener script if browser service is running
+	if browserService != nil {
+		if err := UploadBrowserOpenerScript(ctx, args.CodespaceName, browserService.Port); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to upload browser opener script: %v\n", err)
+		} else {
+			// Print instructions for user to configure BROWSER environment variable
+			fmt.Fprintf(os.Stderr, "\nBrowser opener available! To enable browser forwarding, add to your shell config:\n")
+			fmt.Fprintf(os.Stderr, "  export BROWSER=\"$HOME/browser-opener.sh\"\n\n")
+		}
 	}
 
 	// Start the port monitor in the background
