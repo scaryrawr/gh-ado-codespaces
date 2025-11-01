@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 )
@@ -22,6 +23,15 @@ func TestNewBrowserService(t *testing.T) {
 
 	if service.Port == 0 {
 		t.Error("Browser service port should not be 0")
+	}
+
+	if service.SocketPath == "" {
+		t.Error("Browser service socket path should not be empty")
+	}
+
+	// Verify socket path follows expected pattern
+	if !strings.HasPrefix(service.SocketPath, "/tmp/gh-ado-browser-") || !strings.HasSuffix(service.SocketPath, ".sock") {
+		t.Errorf("Socket path has unexpected format: %s", service.SocketPath)
 	}
 
 	if service.listener == nil {
@@ -99,8 +109,8 @@ func TestBuildSSHArgsWithBrowserService(t *testing.T) {
 	args := CommandLineArgs{}
 	sshArgs := args.BuildSSHArgs("/tmp/test.sock", 8080, service)
 
-	// Verify browser port forward is included
-	expectedForward := fmt.Sprintf("%d:localhost:%d", service.Port, service.Port)
+	// Verify browser socket forward is included (socket path -> localhost:port)
+	expectedForward := fmt.Sprintf("%s:localhost:%d", service.SocketPath, service.Port)
 	foundForward := false
 	for i := 0; i < len(sshArgs)-1; i++ {
 		if sshArgs[i] == "-R" && sshArgs[i+1] == expectedForward {
@@ -110,7 +120,7 @@ func TestBuildSSHArgsWithBrowserService(t *testing.T) {
 	}
 
 	if !foundForward {
-		t.Errorf("Browser port forward not found in SSH args. Expected: %s, Got args: %v", expectedForward, sshArgs)
+		t.Errorf("Browser socket forward not found in SSH args. Expected: %s, Got args: %v", expectedForward, sshArgs)
 	}
 
 	// Verify SetEnv options are NOT included (users configure BROWSER themselves)
