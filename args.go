@@ -122,9 +122,9 @@ func (args *CommandLineArgs) BuildSSHArgs(socketPath string, port int, browserSe
 	forwardSpec := fmt.Sprintf("%s:localhost:%d", socketPath, port)
 	sshArgs = append(sshArgs, "-R", forwardSpec)
 
-	// Add browser port forward if browser service is available
+	// Add browser socket forward if browser service is available
 	if browserService != nil {
-		browserForwardSpec := fmt.Sprintf("%d:localhost:%d", browserService.Port, browserService.Port)
+		browserForwardSpec := fmt.Sprintf("%s:localhost:%d", browserService.SocketPath, browserService.Port)
 		sshArgs = append(sshArgs, "-R", browserForwardSpec)
 	}
 
