@@ -17,19 +17,20 @@ if [ -z "$URL" ]; then
 fi
 
 # Find all browser sockets in /tmp (pattern: gh-ado-browser-*.sock)
-# Try each socket until one succeeds (handles multiple instances and stale sockets)
-BROWSER_SOCKETS=$(find /tmp -maxdepth 1 -name "gh-ado-browser-*.sock" -type s 2>/dev/null)
+# Sort by modification time (newest first) to prefer active sockets
+BROWSER_SOCKETS=$(find /tmp -maxdepth 1 -name "gh-ado-browser-*.sock" -type s -print0 2>/dev/null | xargs -0 -r ls -t 2>/dev/null)
 
 if [ -z "$BROWSER_SOCKETS" ]; then
     # No socket found - browser forwarding not available
     exit 0
 fi
 
-# Try each socket until one succeeds
+# Try each socket until one succeeds (with timeout to quickly skip dead sockets)
 for BROWSER_SOCKET in $BROWSER_SOCKETS; do
     # Send URL to the socket via HTTP POST using curl with --unix-socket
     # Using curl to send the URL as a query parameter
-    if curl -s --unix-socket "$BROWSER_SOCKET" -X POST "http://localhost/open?url=$(printf %s "$URL" | jq -sRr @uri)" >/dev/null 2>&1; then
+    # --max-time 2 ensures we fail fast on dead sockets
+    if curl -s --max-time 2 --unix-socket "$BROWSER_SOCKET" -X POST "http://localhost/open?url=$(printf %s "$URL" | jq -sRr @uri)" >/dev/null 2>&1; then
         # Success - exit immediately
         exit 0
     fi
