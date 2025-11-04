@@ -111,7 +111,7 @@ func main() {
 
 	// Upload browser opener script if browser service is running
 	if browserService != nil {
-		if err := UploadBrowserOpenerScript(ctx, args.CodespaceName, browserService.Port); err != nil {
+		if err := UploadBrowserOpenerScript(ctx, args.CodespaceName); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to upload browser opener script: %v\n", err)
 		} else {
 			// Print instructions for user to configure BROWSER environment variable
