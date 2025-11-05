@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/cli/go-gh/v2"
 	"github.com/google/uuid"
@@ -120,9 +121,18 @@ func (bs *BrowserService) handleOpenURL(w http.ResponseWriter, r *http.Request) 
 func (bs *BrowserService) Stop() {
 	if bs.cancel != nil {
 		logDebug("BrowserService: Stop() called")
-		bs.server.Shutdown(bs.ctx)
+		
+		// Use background context for shutdown to avoid race with cancel
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer shutdownCancel()
+		
+		bs.server.Shutdown(shutdownCtx)
 		bs.cancel()
 		bs.wg.Wait()
+		
+		// Clean up socket file
+		cleanupSocketFile(bs.SocketPath)
+		
 		logDebug("BrowserService: stopped")
 	}
 }
@@ -159,4 +169,15 @@ func UploadBrowserOpenerScript(ctx context.Context, codespaceName string) error 
 
 	logDebug("Browser opener script uploaded and made executable")
 	return nil
+}
+
+// cleanupSocketFile removes the socket file at the specified path
+func cleanupSocketFile(socketPath string) {
+	if socketPath != "" {
+		if err := os.Remove(socketPath); err != nil && !os.IsNotExist(err) {
+			logDebug("Failed to remove socket file %s: %v", socketPath, err)
+		} else {
+			logDebug("Cleaned up socket file: %s", socketPath)
+		}
+	}
 }
