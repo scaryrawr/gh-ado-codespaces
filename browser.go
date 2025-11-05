@@ -171,7 +171,7 @@ func UploadBrowserOpenerScript(ctx context.Context, codespaceName string) error 
 	return nil
 }
 
-// cleanupSocketFile removes stale socket files matching the browser pattern
+// cleanupSocketFile removes the socket file at the specified path
 func cleanupSocketFile(socketPath string) {
 	if socketPath != "" {
 		if err := os.Remove(socketPath); err != nil && !os.IsNotExist(err) {
