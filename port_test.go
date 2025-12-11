@@ -50,8 +50,8 @@ func TestGetBoundReverseForwards(t *testing.T) {
 		if forward.Description == "" {
 			t.Errorf("Missing description for port %d", forward.Port)
 		}
-		// Verify the port is actually bound
-		if !isPortBound(forward.Port) {
+		// Verify the port is actually bound OR marked as AlwaysForward
+		if !forward.AlwaysForward && !isPortBound(forward.Port) {
 			t.Errorf("Port %d reported as bound but isPortBound() returns false", forward.Port)
 		}
 	}

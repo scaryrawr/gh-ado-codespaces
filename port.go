@@ -8,14 +8,16 @@ import (
 
 // ReversePortForward represents a reverse port forward configuration
 type ReversePortForward struct {
-	Port        int
-	Description string
-	Enabled     bool
+	Port          int
+	Description   string
+	Enabled       bool
+	AlwaysForward bool // If true, forward even when port is not bound locally
 }
 
-// WellKnownPorts defines commonly used AI service ports that should be forwarded
+// WellKnownPorts defines commonly used service ports that should be forwarded
 var WellKnownPorts = []ReversePortForward{
 	{Port: 1234, Description: "LM Studio", Enabled: true},
+	{Port: 9222, Description: "Chrome DevTools", Enabled: true, AlwaysForward: true},
 	{Port: 11434, Description: "Ollama", Enabled: true},
 }
 
@@ -30,7 +32,7 @@ func isPortBound(port int) bool {
 }
 
 // GetBoundReverseForwards returns a list of ports that should be reverse forwarded
-// based on what's currently bound on the local machine
+// based on what's currently bound on the local machine or marked as AlwaysForward
 func GetBoundReverseForwards() []ReversePortForward {
 	var boundPorts []ReversePortForward
 
@@ -39,7 +41,7 @@ func GetBoundReverseForwards() []ReversePortForward {
 			continue
 		}
 
-		if isPortBound(forward.Port) {
+		if forward.AlwaysForward || isPortBound(forward.Port) {
 			boundPorts = append(boundPorts, forward)
 		}
 	}
@@ -53,9 +55,13 @@ func LogReverseForwards(forwards []ReversePortForward) {
 		return
 	}
 
-	fmt.Fprintf(os.Stderr, "Detected local services for reverse forwarding:\n")
+	fmt.Fprintf(os.Stderr, "Reverse port forwarding:\n")
 	for _, forward := range forwards {
-		fmt.Fprintf(os.Stderr, "  • %s (port %d) → will be accessible in codespace\n", forward.Description, forward.Port)
+		if forward.AlwaysForward {
+			fmt.Fprintf(os.Stderr, "  • %s (port %d) → always forwarded\n", forward.Description, forward.Port)
+		} else {
+			fmt.Fprintf(os.Stderr, "  • %s (port %d) → detected locally\n", forward.Description, forward.Port)
+		}
 	}
 }
 
