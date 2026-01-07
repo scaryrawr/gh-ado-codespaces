@@ -17,7 +17,7 @@ type ReversePortForward struct {
 // WellKnownPorts defines commonly used service ports that should be forwarded
 var WellKnownPorts = []ReversePortForward{
 	{Port: 1234, Description: "LM Studio", Enabled: true},
-	{Port: 9222, Description: "Chrome DevTools", Enabled: true, AlwaysForward: true},
+	{Port: 9222, Description: "Chrome DevTools", Enabled: true},
 	{Port: 11434, Description: "Ollama", Enabled: true},
 }
 
