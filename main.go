@@ -93,9 +93,19 @@ func main() {
 		defer browserService.Stop()
 	}
 
+	// Start the notification service early so we can include its port in SSH args
+	var notificationService *NotificationService
+	notificationService, err = NewNotificationService(ctx)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to start notification service: %v\n", err)
+		// Continue anyway, SSH will still work without notification forwarding
+	} else {
+		defer notificationService.Stop()
+	}
+
 	// Build command line arguments for gh
 	ghFlags := args.BuildGHFlags()
-	sshArgs := args.BuildSSHArgs(serverConfig.SocketPath, serverConfig.Port, browserService)
+	sshArgs := args.BuildSSHArgs(serverConfig.SocketPath, serverConfig.Port, browserService, notificationService)
 
 	// Combine all arguments
 	finalArgs := append(ghFlags, sshArgs...)
@@ -103,6 +113,20 @@ func main() {
 	// Upload all scripts in parallel, then chmod + symlink in one SSH call
 	if err := prepareCodespaceScripts(ctx, args.CodespaceName, browserService != nil); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to prepare codespace scripts: %v\n", err)
+	}
+
+	// Upload notification sender script if notification service is running
+	if notificationService != nil {
+		if err := UploadNotificationSenderScript(ctx, args.CodespaceName); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to upload notification sender script: %v\n", err)
+		} else {
+			// Print instructions for user to configure notifications
+			fmt.Fprintf(os.Stderr, "Command completion notifications available! To enable, add to your shell config:\n")
+			fmt.Fprintf(os.Stderr, "  # For bash (~/.bashrc) or zsh (~/.zshrc)\n")
+			fmt.Fprintf(os.Stderr, "  if [ -f \"$HOME/notification-sender.sh\" ]; then\n")
+			fmt.Fprintf(os.Stderr, "      source \"$HOME/notification-sender.sh\"\n")
+			fmt.Fprintf(os.Stderr, "  fi\n\n")
+		}
 	}
 
 	// Start the port monitor in the background
