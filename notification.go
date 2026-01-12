@@ -124,13 +124,11 @@ func (ns *NotificationService) handleNotification(w http.ResponseWriter, r *http
 	// Send the notification using beeep
 	if err := beeep.Notify(req.Title, req.Message, ""); err != nil {
 		logDebug("Error sending notification: %v", err)
-		fmt.Fprintf(os.Stderr, "Warning: failed to send notification: %v\n", err)
 		http.Error(w, "Failed to send notification", http.StatusInternalServerError)
 		return
 	}
 
 	logDebug("Successfully sent notification")
-	fmt.Fprintf(os.Stderr, "Notification: %s - %s\n", req.Title, req.Message)
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("OK"))
 }

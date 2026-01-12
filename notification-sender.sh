@@ -21,35 +21,72 @@ NOTIFICATION_MIN_DURATION="${NOTIFICATION_MIN_DURATION:-5}"  # Minimum command d
 # Store command start time
 __notification_cmd_start_time=0
 
+# Cache for socket path (reset every 60 seconds)
+__notification_socket_cache=""
+__notification_socket_cache_time=0
+
+# Function to find and cache notification socket
+__find_notification_socket() {
+    local current_time=$(date +%s)
+    local cache_lifetime=60
+    
+    # Return cached socket if still valid
+    if [ -n "$__notification_socket_cache" ] && [ $((current_time - __notification_socket_cache_time)) -lt $cache_lifetime ]; then
+        echo "$__notification_socket_cache"
+        return 0
+    fi
+    
+    # Find all notification sockets in /tmp (pattern: gh-ado-notification-*.sock)
+    # Sort by modification time (newest first) to prefer active sockets
+    local NOTIFICATION_SOCKETS=$(find /tmp -maxdepth 1 -name "gh-ado-notification-*.sock" -type s -print0 2>/dev/null | xargs -0 -r ls -t 2>/dev/null | head -1)
+    
+    if [ -n "$NOTIFICATION_SOCKETS" ]; then
+        __notification_socket_cache="$NOTIFICATION_SOCKETS"
+        __notification_socket_cache_time=$current_time
+        echo "$__notification_socket_cache"
+        return 0
+    fi
+    
+    return 1
+}
+
 # Function to send notification
 __send_notification() {
     local title="$1"
     local message="$2"
     
-    # Find all notification sockets in /tmp (pattern: gh-ado-notification-*.sock)
-    # Sort by modification time (newest first) to prefer active sockets
-    local NOTIFICATION_SOCKETS=$(find /tmp -maxdepth 1 -name "gh-ado-notification-*.sock" -type s -print0 2>/dev/null | xargs -0 -r ls -t 2>/dev/null)
+    # Check if jq is available
+    if ! command -v jq >/dev/null 2>&1; then
+        # jq not available, skip notification
+        return 0
+    fi
     
-    if [ -z "$NOTIFICATION_SOCKETS" ]; then
+    local NOTIFICATION_SOCKET=$(__find_notification_socket)
+    
+    if [ -z "$NOTIFICATION_SOCKET" ]; then
         # No socket found - notification service not available
         return 0
     fi
     
-    # Try each socket until one succeeds (with timeout to quickly skip dead sockets)
-    for NOTIFICATION_SOCKET in $NOTIFICATION_SOCKETS; do
-        # Send notification to the socket via HTTP POST using curl with --unix-socket
-        # --max-time 2 ensures we fail fast on dead sockets
-        if curl -s --max-time 2 --unix-socket "$NOTIFICATION_SOCKET" -X POST \
-            -H "Content-Type: application/json" \
-            -d "{\"title\":$(printf %s "$title" | jq -Rs .), \"message\":$(printf %s "$message" | jq -Rs .)}" \
-            "http://localhost/notify" >/dev/null 2>&1; then
-            # Success - exit immediately
-            return 0
-        fi
-    done
+    # Check if curl is available
+    if ! command -v curl >/dev/null 2>&1; then
+        # curl not available, skip notification
+        return 0
+    fi
     
-    # All sockets failed - notification service not available
-    return 0
+    # Send notification to the socket via HTTP POST using curl with --unix-socket
+    # --max-time 2 ensures we fail fast on dead sockets
+    if curl -s --max-time 2 --unix-socket "$NOTIFICATION_SOCKET" -X POST \
+        -H "Content-Type: application/json" \
+        -d "{\"title\":$(printf %s "$title" | jq -Rs .), \"message\":$(printf %s "$message" | jq -Rs .)}" \
+        "http://localhost/notify" >/dev/null 2>&1; then
+        # Success
+        return 0
+    else
+        # Failed - invalidate cache to force re-discovery next time
+        __notification_socket_cache=""
+        return 1
+    fi
 }
 
 # Bash-specific hooks
