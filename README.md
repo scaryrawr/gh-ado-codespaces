@@ -8,7 +8,9 @@ When working with GitHub Codespaces and Azure DevOps services, authentication ca
 
 1. Securely forwarding your local Azure CLI credentials to your codespace
 2. Automatically detecting and forwarding application ports from your codespace to your local machine
-3. Providing a seamless development experience with GitHub Codespaces and Azure DevOps
+3. Enabling browser opening from your codespace to your local browser
+4. Providing command completion notifications to your local desktop
+5. Providing a seamless development experience with GitHub Codespaces and Azure DevOps
 
 ## Requirements
 
@@ -131,6 +133,51 @@ The browser opener works cross-platform and will use your default browser on Win
 
 **Note:** You only need to set the `BROWSER` environment variable once in your shell configuration. The port is automatically configured in the script when it's uploaded.
 
+### Command Completion Notifications
+
+The extension provides command completion notifications from your codespace to your local machine, inspired by the [done](https://github.com/franciscolourenco/done) project. Get desktop notifications when long-running commands finish:
+
+1. When you connect, a notification sender script is uploaded to your codespace at `~/notification-sender.sh`
+2. A local notification service is started that listens for notification requests
+3. The service port is forwarded to the codespace via SSH reverse port forwarding
+4. Users can enable notifications by adding to their shell config (e.g., `~/.bashrc` or `~/.zshrc`):
+   ```bash
+   # For bash or zsh
+   if [ -f "$HOME/notification-sender.sh" ]; then
+       source "$HOME/notification-sender.sh"
+   fi
+   ```
+5. When a command takes longer than 5 seconds (configurable), you'll receive a desktop notification with:
+   - Command status (completed or failed)
+   - The command that was run
+   - Duration and exit code
+
+**Configuration:**
+
+You can customize the notification behavior with environment variables:
+
+```bash
+# Set minimum command duration (in seconds) before triggering a notification
+export NOTIFICATION_MIN_DURATION=10  # Default is 5 seconds
+```
+
+**Supported Shells:**
+- Bash (via DEBUG trap and PROMPT_COMMAND)
+- Zsh (via preexec and precmd hooks)
+
+The notification system works cross-platform and uses:
+- **macOS**: Native notification center
+- **Linux**: notify-send (via D-Bus)
+- **Windows**: Windows notification system
+
+This is particularly useful for:
+- Getting notified when builds, tests, or deployments finish
+- Switching away from your terminal while waiting for long-running tasks
+- Monitoring command failures even when not actively watching the terminal
+- Improving productivity by staying informed of command completions
+
+**Note:** After adding the configuration to your shell, reload it with `source ~/.bashrc` (or `~/.zshrc`) or start a new shell session.
+
 ### Port Forwarding
 
 The automatic port forwarding system works in two directions:
@@ -165,7 +212,7 @@ This project includes a comprehensive unit test suite that covers:
 - **Command line argument parsing and validation** (`args_test.go`)
   - Azure subscription ID format validation
   - Command line flag building for `gh codespace ssh`
-  - SSH argument construction with browser service integration
+  - SSH argument construction with browser and notification service integration
 
 - **Configuration file handling** (`config_test.go`)
   - Azure subscription storage and retrieval per GitHub account
@@ -177,6 +224,12 @@ This project includes a comprehensive unit test suite that covers:
   - Cross-platform URL opening support via HTTP endpoint
   - HTTP method and parameter validation
   - SSH argument integration with browser port forwarding
+
+- **Notification functionality** (`notification_test.go`)
+  - Notification service creation and lifecycle management
+  - Cross-platform desktop notification support via HTTP endpoint
+  - HTTP method and JSON payload validation
+  - SSH argument integration with notification socket forwarding
 
 - **Utility functions** (`main_test.go`)
   - Filename sanitization for session directories  
