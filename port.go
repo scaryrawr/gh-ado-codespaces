@@ -76,3 +76,15 @@ func BuildReverseForwardArgs(forwards []ReversePortForward) []string {
 
 	return args
 }
+
+// IsReverseForwardedPort checks if a port is in the well-known reverse-forwarded ports list.
+// This is used by the port monitor to avoid forwarding ports that are already being
+// reverse-forwarded from the local machine to the codespace.
+func IsReverseForwardedPort(port int) bool {
+	for _, forward := range WellKnownPorts {
+		if forward.Port == port && forward.Enabled {
+			return true
+		}
+	}
+	return false
+}

@@ -156,6 +156,49 @@ func TestWellKnownPorts(t *testing.T) {
 	}
 }
 
+func TestIsReverseForwardedPort(t *testing.T) {
+	tests := []struct {
+		name     string
+		port     int
+		expected bool
+	}{
+		{
+			name:     "LM Studio port",
+			port:     1234,
+			expected: true,
+		},
+		{
+			name:     "Chrome DevTools port",
+			port:     9222,
+			expected: true,
+		},
+		{
+			name:     "Ollama port",
+			port:     11434,
+			expected: true,
+		},
+		{
+			name:     "random high port",
+			port:     8080,
+			expected: false,
+		},
+		{
+			name:     "another random port",
+			port:     3000,
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := IsReverseForwardedPort(tt.port)
+			if result != tt.expected {
+				t.Errorf("IsReverseForwardedPort(%d) = %v, want %v", tt.port, result, tt.expected)
+			}
+		})
+	}
+}
+
 func TestReversePortForwardIntegration(t *testing.T) {
 	// Create a test server to simulate a bound port
 	listener, err := net.Listen("tcp", "localhost:0")
