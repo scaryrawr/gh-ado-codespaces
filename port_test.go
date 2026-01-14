@@ -197,6 +197,29 @@ func TestIsReverseForwardedPort(t *testing.T) {
 			}
 		})
 	}
+	
+	// Test for a port that exists in WellKnownPorts but has Enabled=false
+	t.Run("disabled port in WellKnownPorts", func(t *testing.T) {
+		// Save original configuration
+		originalPorts := WellKnownPorts
+		defer func() { WellKnownPorts = originalPorts }()
+		
+		// Configure with a disabled port
+		WellKnownPorts = []ReversePortForward{
+			{Port: 5555, Description: "Disabled Service", Enabled: false},
+			{Port: 6666, Description: "Enabled Service", Enabled: true},
+		}
+		
+		// The disabled port should return false
+		if IsReverseForwardedPort(5555) {
+			t.Error("IsReverseForwardedPort(5555) = true, want false for disabled port")
+		}
+		
+		// The enabled port should return true
+		if !IsReverseForwardedPort(6666) {
+			t.Error("IsReverseForwardedPort(6666) = false, want true for enabled port")
+		}
+	})
 }
 
 func TestReversePortForwardIntegration(t *testing.T) {
