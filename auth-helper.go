@@ -48,6 +48,6 @@ func UploadAuthHelpers(ctx context.Context, codespaceName string) error {
 		return fmt.Errorf("error making auth helper scripts executable: %w\nStderr: %s", err, stderr.String())
 	}
 
-	fmt.Println("ADO and Azure auth helpers uploaded to the codespace and made executable")
+	fmt.Fprintln(os.Stderr, "ADO and Azure auth helpers uploaded to the codespace and made executable")
 	return nil
 }
