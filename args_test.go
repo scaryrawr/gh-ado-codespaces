@@ -120,7 +120,7 @@ func TestCommandLineArgs_BuildSSHArgs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := tt.args.BuildSSHArgs(tt.socketPath, tt.port, nil)
+			result := tt.args.BuildSSHArgs(tt.socketPath, tt.port, nil, nil)
 			
 			// Check that result starts with "--"
 			if len(result) < 1 || result[0] != "--" {

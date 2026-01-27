@@ -322,7 +322,7 @@ func TestBuildSSHArgsWithReverseForwards(t *testing.T) {
 
 	// Build SSH args
 	args := CommandLineArgs{}
-	sshArgs := args.BuildSSHArgs("/tmp/test.sock", 8080, nil)
+	sshArgs := args.BuildSSHArgs("/tmp/test.sock", 8080, nil, nil)
 
 	// Verify the test port is included
 	expectedForward := fmt.Sprintf("%d:localhost:%d", testPort, testPort)
@@ -386,7 +386,7 @@ func TestSSHArgsWithUserArguments(t *testing.T) {
 	args := CommandLineArgs{
 		RemainingArgs: []string{"-L", "3000:localhost:3000", "echo", "test"},
 	}
-	sshArgs := args.BuildSSHArgs("/tmp/test.sock", 8080, nil)
+	sshArgs := args.BuildSSHArgs("/tmp/test.sock", 8080, nil, nil)
 	
 	// Verify user args are at the end
 	if len(sshArgs) < 4 {
