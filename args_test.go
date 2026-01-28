@@ -121,13 +121,13 @@ func TestCommandLineArgs_BuildSSHArgs(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := tt.args.BuildSSHArgs(tt.socketPath, tt.port, nil)
-			
+
 			// Check that result starts with "--"
 			if len(result) < 1 || result[0] != "--" {
 				t.Errorf("BuildSSHArgs() should start with '--', got %v", result)
 				return
 			}
-			
+
 			// Check that the socket forward is present
 			foundSocketForward := false
 			expectedSocketForward := tt.socketPath + ":localhost:" + fmt.Sprint(tt.port)
@@ -140,7 +140,7 @@ func TestCommandLineArgs_BuildSSHArgs(t *testing.T) {
 			if !foundSocketForward {
 				t.Errorf("BuildSSHArgs() should contain '-R %s', got %v", expectedSocketForward, result)
 			}
-			
+
 			// Check that -t flag is present
 			foundT := false
 			for _, arg := range result {
@@ -152,7 +152,7 @@ func TestCommandLineArgs_BuildSSHArgs(t *testing.T) {
 			if !foundT {
 				t.Errorf("BuildSSHArgs() should contain '-t' flag, got %v", result)
 			}
-			
+
 			// Check that remaining args are included
 			if len(tt.args.RemainingArgs) > 0 {
 				foundRemainingArgs := true
@@ -173,7 +173,7 @@ func TestCommandLineArgs_BuildSSHArgs(t *testing.T) {
 					t.Errorf("BuildSSHArgs() should contain remaining args %v, got %v", tt.args.RemainingArgs, result)
 				}
 			}
-			
+
 			// Note: Reverse port forwarding is tested in port_test.go
 			// We just verify the structure here since the actual forwards depend on runtime port availability
 		})
