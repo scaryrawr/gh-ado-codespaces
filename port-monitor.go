@@ -342,6 +342,12 @@ func runAndProcessOutput(ctx context.Context, codespaceName string) error {
 func handlePortMessage(ctx context.Context, codespaceName string, msg PortMessage, portForwards map[int]portForwardInfo) {
 	switch msg.Action {
 	case "bound":
+		// Skip ports that are being reverse-forwarded from the local machine
+		if IsReverseForwardedPort(msg.Port) {
+			logDebug("Port %d is a reverse-forwarded port, skipping port forwarding", msg.Port)
+			return
+		}
+
 		// If not already forwarded or if previously unbound, start port forwarding
 		info := portForwards[msg.Port]
 		if !info.active {
