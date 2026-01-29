@@ -49,8 +49,9 @@ func UploadAuthHelpers(ctx context.Context, codespaceName string) error {
 	}
 
 	// Create symbolic links in /usr/local/bin if they don't already exist
-	symlinkCmd := "test -L /usr/local/bin/ado-auth-helper || sudo ln -sf ~/ado-auth-helper /usr/local/bin/ado-auth-helper; " +
-		"test -L /usr/local/bin/azure-auth-helper || sudo ln -sf ~/azure-auth-helper /usr/local/bin/azure-auth-helper"
+	symlinkCmd := "set -e; " +
+		"(test -L /usr/local/bin/ado-auth-helper || sudo ln -sf ~/ado-auth-helper /usr/local/bin/ado-auth-helper) && " +
+		"(test -L /usr/local/bin/azure-auth-helper || sudo ln -sf ~/azure-auth-helper /usr/local/bin/azure-auth-helper)"
 	symlinkArgs := []string{"codespace", "ssh", "--codespace", codespaceName, "--", "bash", "-c", symlinkCmd}
 	_, stderr, err = gh.Exec(symlinkArgs...)
 	if err != nil {

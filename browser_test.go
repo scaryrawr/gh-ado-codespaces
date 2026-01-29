@@ -63,7 +63,7 @@ func TestBrowserServiceHandlesHTTPRequest(t *testing.T) {
 		"application/x-www-form-urlencoded",
 		nil,
 	)
-	
+
 	if err != nil {
 		t.Fatalf("Failed to send HTTP request: %v", err)
 	}
@@ -125,7 +125,7 @@ func TestBuildSSHArgsWithBrowserService(t *testing.T) {
 
 	// Verify SetEnv options are NOT included (users configure BROWSER themselves)
 	for i := 0; i < len(sshArgs)-1; i++ {
-		if sshArgs[i] == "-o" && (sshArgs[i+1] == "SetEnv BROWSER=$HOME/browser-opener.sh" || 
+		if sshArgs[i] == "-o" && (sshArgs[i+1] == "SetEnv BROWSER=$HOME/browser-opener.sh" ||
 			sshArgs[i+1] == fmt.Sprintf("SetEnv GH_ADO_CODESPACES_BROWSER_PORT=%d", service.Port)) {
 			t.Errorf("SetEnv options should not be in SSH args anymore (users configure BROWSER themselves). Found: %s", sshArgs[i+1])
 		}

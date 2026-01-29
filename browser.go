@@ -39,11 +39,11 @@ func NewBrowserService(ctx context.Context) (*BrowserService, error) {
 
 	// Get the actual port that was assigned
 	browserPort := listener.Addr().(*net.TCPAddr).Port
-	
+
 	// Generate a unique socket path for remote forwarding
 	socketId := uuid.New()
 	socketPath := "/tmp/gh-ado-browser-" + socketId.String() + ".sock"
-	
+
 	logDebug("Local browser HTTP service created on port: %d, socket path: %s", browserPort, socketPath)
 
 	serviceCtx, cancel := context.WithCancel(ctx)
@@ -121,18 +121,18 @@ func (bs *BrowserService) handleOpenURL(w http.ResponseWriter, r *http.Request) 
 func (bs *BrowserService) Stop() {
 	if bs.cancel != nil {
 		logDebug("BrowserService: Stop() called")
-		
+
 		// Use background context for shutdown to avoid race with cancel
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer shutdownCancel()
-		
+
 		bs.server.Shutdown(shutdownCtx)
 		bs.cancel()
 		bs.wg.Wait()
-		
+
 		// Clean up socket file
 		cleanupSocketFile(bs.SocketPath)
-		
+
 		logDebug("BrowserService: stopped")
 	}
 }
