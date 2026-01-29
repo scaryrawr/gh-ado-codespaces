@@ -1,3 +1,18 @@
+---
+name: gh-ado-codespaces-developer
+description: Expert Go developer for the gh-ado-codespaces GitHub CLI extension, specializing in Azure DevOps authentication, SSH integration, and GitHub Codespaces.
+tools:
+  - bash
+  - edit
+  - view
+  - grep
+  - glob
+infer: true
+metadata:
+  language: go
+  framework: github-cli-extension
+---
+
 # Agent Development Guide
 
 This document provides coding guidelines and conventions for AI agents working on the gh-ado-codespaces project.
@@ -6,49 +21,128 @@ This document provides coding guidelines and conventions for AI agents working o
 
 This is a GitHub CLI extension written in Go that enables Azure DevOps authentication with GitHub Codespaces via SSH, without requiring VS Code. It provides automatic port forwarding and browser opening capabilities.
 
+**Key Technologies:**
+- Go 1.24.3+
+- GitHub CLI (`gh`) extension framework
+- Azure SDK for Go (`github.com/Azure/azure-sdk-for-go/sdk`)
+- SSH protocol and port forwarding
+- Python authentication helper scripts
+
+## Repository Structure
+
+```
+gh-ado-codespaces/
+├── main.go                 # Entry point and main execution flow
+├── args.go                 # Command-line argument parsing
+├── auth-helper.go          # Azure authentication helper service
+├── azure-auth.go           # Azure SDK integration and token management
+├── browser.go              # Browser opening service and HTTP handler
+├── codespace.go            # GitHub Codespaces API integration
+├── config.go               # Configuration file management
+├── github_login.go         # GitHub authentication integration
+├── port.go                 # Port forwarding logic and detection
+├── port-monitor.go         # Port monitoring service
+├── ui.go                   # Terminal UI and formatting
+├── *_test.go              # Test files (parallel to source files)
+├── ado-auth-helper.py     # Python script for Azure auth in codespace
+├── browser-opener.sh       # Bash script for browser opening in codespace
+├── port-monitor.sh         # Bash script for port monitoring in codespace
+├── go.mod, go.sum          # Go module dependencies
+├── AGENTS.md               # This file - agent instructions
+├── README.md               # User-facing documentation
+└── .github/
+    └── workflows/          # CI/CD pipeline definitions
+```
+
+**Key files you'll work with:**
+- `main.go`: Orchestrates the entire flow, sets up services, manages SSH connection
+- `args.go`: Parses CLI flags, builds SSH command arguments
+- `auth-helper.go`: Uploads Python authentication helper scripts to codespace
+- `azure-auth.go`: Starts local authentication server using Azure SDK
+- `browser.go`: HTTP service for opening URLs from codespace
+- `port.go`: SSH port forwarding setup and management
+- `config.go`: Reads/writes user configuration (Azure subscription overrides)
+
+## Boundaries and Restrictions
+
+**What you MUST NOT do:**
+- Never commit secrets, tokens, or credentials to the repository
+- Do not modify or remove existing tests without explicit justification
+- Do not change the core authentication flow without thorough testing
+- Do not log sensitive information (tokens, credentials, user data)
+- Do not use `panic` for error handling; always return errors
+- Do not modify `.github/workflows` files without understanding CI implications
+- Do not introduce breaking changes to the command-line interface
+- Do not remove or change existing log file structures (session-based logging)
+
+**What you should be cautious about:**
+- Changes to SSH connection logic require careful testing
+- Port forwarding logic is complex; understand the full flow before modifying
+- Azure authentication flow must maintain backward compatibility
+- Browser opening functionality works cross-platform; test on all platforms
+- Configuration file format changes require migration path for existing users
+
 ## Build, Test, and Lint Commands
+
+**IMPORTANT:** Always run these commands from the repository root directory.
 
 ### Build
 ```bash
-# Build the extension
+# Build the extension (REQUIRED before manual testing)
 go build -v .
 
-# Build with output name
+# Build with specific output name
 go build -v -o gh-ado-codespaces .
 ```
 
+**When to build:**
+- After making any code changes to Go files
+- Before manually testing the extension
+- To verify compilation succeeds
+
 ### Test
 ```bash
-# Run all tests
+# Run all tests (ALWAYS run before committing)
 go test -v ./...
 
-# Run tests with race detection (CI standard)
+# Run tests with race detection (matches CI, use before pushing)
 go test -v -race .
 
-# Run only fast unit tests (skip integration tests)
+# Run only fast unit tests (when iterating on changes)
 go test -short -v ./...
 
-# Run a specific test
+# Run a specific test by name
 go test -v -run TestFunctionName
 
-# Run a specific test file's tests
+# Run tests for a specific file
 go test -v -run "TestArgs.*"
 
-# Run tests with coverage
+# Run tests with coverage report
 go test -v -cover ./...
 ```
 
+**Testing workflow:**
+1. Run targeted tests during development: `go test -v -run TestSpecific`
+2. Run all tests before committing: `go test -v ./...`
+3. Run with race detector before pushing: `go test -v -race .`
+
 ### Format and Lint
 ```bash
-# Format code (always run before committing)
+# Format code (ALWAYS run before committing)
 go fmt ./...
 
-# Run static analysis
+# Run static analysis (checks for common mistakes)
 go vet ./...
 
-# Install and run golangci-lint (recommended)
+# Run golangci-lint if available (recommended)
 golangci-lint run
 ```
+
+**Code quality workflow:**
+1. Format all code: `go fmt ./...`
+2. Check for issues: `go vet ./...`
+3. Run linter if available: `golangci-lint run`
+4. Fix any reported issues before committing
 
 ## Code Style Guidelines
 
@@ -227,6 +321,47 @@ func TestSanitizeForFilename(t *testing.T) {
 - Support per-account subscription overrides via config
 - Log authentication operations for debugging
 
+## Git Workflow and Commit Conventions
+
+### Branch Strategy
+- Work on feature branches, not `main`
+- Branch names should be descriptive: `feature/add-xyz`, `fix/issue-123`, `docs/update-readme`
+
+### Commit Messages
+- Use clear, descriptive commit messages
+- Start with a verb in present tense: "Add", "Fix", "Update", "Remove"
+- Keep the first line under 72 characters
+- Add details in the body if needed
+
+**Good examples:**
+```
+Add browser port forwarding feature
+Fix race condition in port monitor
+Update AGENTS.md with best practices
+```
+
+**Bad examples:**
+```
+changes
+fixed stuff
+WIP
+```
+
+### Before Committing
+Always complete this checklist:
+1. ✓ Run `go fmt ./...` to format code
+2. ✓ Run `go vet ./...` to check for issues
+3. ✓ Run `go test -v ./...` to ensure tests pass
+4. ✓ Review your changes: `git diff`
+5. ✓ Stage only relevant files (no build artifacts, temp files, or node_modules)
+
+### Pull Request Guidelines
+- Ensure all CI checks pass
+- Write descriptive PR titles and descriptions
+- Reference any related issues
+- Keep PRs focused on a single change or feature
+- Respond to review feedback promptly
+
 ## Common Pitfalls to Avoid
 
 - Do not use `cd` in command execution; use proper working directory parameters
@@ -235,3 +370,52 @@ func TestSanitizeForFilename(t *testing.T) {
 - Do not log sensitive information (tokens, credentials)
 - Do not use panic for error handling; return errors instead
 - Do not modify global state without synchronization
+
+## Development Tips and Troubleshooting
+
+### Testing the Extension Locally
+1. Build: `go build -v .`
+2. Test the built binary: `./gh-ado-codespaces --help`
+3. For GitHub CLI integration testing, you may need: `gh extension remove ado-codespaces && gh extension install .`
+
+### Debugging
+- Use `--debug` flag to enable debug logging
+- Check log files in `~/.config/gh-ado-codespaces/sessions/`
+- Use `fmt.Fprintf(os.Stderr, "...")` for development debugging (remove before commit)
+- Run with verbose test output: `go test -v -run TestName`
+
+### Common Issues
+- **Build failures**: Check `go.mod` dependencies are up to date
+- **Test failures**: Ensure you're running from repo root
+- **SSH issues**: Verify `gh` CLI is installed and authenticated
+- **Port forwarding**: Check firewall/network settings allow localhost connections
+
+### Understanding the Flow
+1. User runs `gh ado-codespaces`
+2. Parse arguments (`args.go`)
+3. Load config (`config.go`)
+4. Start local auth server using Azure SDK (`azure-auth.go`)
+5. Start browser service (`browser.go`)
+6. Upload Python helper scripts to codespace (`auth-helper.go`)
+7. Establish SSH connection with port forwarding (`gh codespace ssh`)
+8. Monitor ports in codespace (`port-monitor.sh` → `port.go`)
+9. Forward detected ports automatically
+10. Open URLs from codespace to local browser
+
+### Making Changes
+When modifying code:
+1. **Understand the full impact**: Trace the flow through related files
+2. **Write tests first**: Add test cases before implementation
+3. **Run targeted tests**: `go test -v -run TestYourFunction`
+4. **Check all tests**: `go test -v ./...`
+5. **Format**: `go fmt ./...`
+6. **Static analysis**: `go vet ./...`
+7. **Manual test**: Build and run the extension with a real codespace
+8. **Review logs**: Check session logs for any unexpected behavior
+9. **Commit**: Follow git workflow guidelines above
+
+### Resources
+- [GitHub CLI Extension docs](https://docs.github.com/en/github-cli/github-cli/creating-github-cli-extensions)
+- [Azure SDK for Go docs](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go)
+- [Go testing best practices](https://go.dev/doc/tutorial/add-a-test)
+- Project README: `/README.md`
