@@ -22,11 +22,11 @@ This document provides coding guidelines and conventions for AI agents working o
 This is a GitHub CLI extension written in Go that enables Azure DevOps authentication with GitHub Codespaces via SSH, without requiring VS Code. It provides automatic port forwarding and browser opening capabilities.
 
 **Key Technologies:**
-- Go 1.21+
+- Go 1.24.3+
 - GitHub CLI (`gh`) extension framework
 - Azure SDK for Go (`github.com/Azure/azure-sdk-for-go/sdk`)
 - SSH protocol and port forwarding
-- Node.js authentication helper scripts
+- Python authentication helper scripts
 
 ## Repository Structure
 
@@ -57,7 +57,8 @@ gh-ado-codespaces/
 **Key files you'll work with:**
 - `main.go`: Orchestrates the entire flow, sets up services, manages SSH connection
 - `args.go`: Parses CLI flags, builds SSH command arguments
-- `auth-helper.go`: Starts Node.js server for Azure authentication
+- `auth-helper.go`: Uploads Python authentication helper scripts to codespace
+- `azure-auth.go`: Starts local authentication server using Azure SDK
 - `browser.go`: HTTP service for opening URLs from codespace
 - `port.go`: SSH port forwarding setup and management
 - `config.go`: Reads/writes user configuration (Azure subscription overrides)
@@ -393,9 +394,9 @@ Always complete this checklist:
 1. User runs `gh ado-codespaces`
 2. Parse arguments (`args.go`)
 3. Load config (`config.go`)
-4. Start auth helper service (`auth-helper.go`)
+4. Start local auth server using Azure SDK (`azure-auth.go`)
 5. Start browser service (`browser.go`)
-6. Upload helper scripts to codespace (`main.go`)
+6. Upload Python helper scripts to codespace (`auth-helper.go`)
 7. Establish SSH connection with port forwarding (`gh codespace ssh`)
 8. Monitor ports in codespace (`port-monitor.sh` → `port.go`)
 9. Forward detected ports automatically
