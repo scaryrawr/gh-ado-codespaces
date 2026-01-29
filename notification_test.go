@@ -78,7 +78,7 @@ func TestNotificationServiceHandlesHTTPRequest(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	// We expect it to potentially fail to send notification (no desktop environment in CI), 
+	// We expect it to potentially fail to send notification (no desktop environment in CI),
 	// but the HTTP request should be processed
 	// The status could be 500 if notification sending fails, but that's okay for this test
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusInternalServerError {
