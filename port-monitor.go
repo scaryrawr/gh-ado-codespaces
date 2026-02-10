@@ -163,14 +163,33 @@ func StartPortMonitor(ctx context.Context, codespaceName string) (*PortMonitorCo
 
 // runPortMonitor handles the actual port monitoring logic
 func runPortMonitor(ctx context.Context, codespaceName string) error {
-	// Upload and prepare the port monitor script
-	err := uploadPortMonitorScript(ctx, codespaceName)
+	return runAndProcessOutput(ctx, codespaceName)
+}
+
+// uploadPortMonitorFile copies the port-monitor.sh script to the codespace
+func uploadPortMonitorFile(ctx context.Context, codespaceName string) error {
+	// Create a temporary file with the embedded script content
+	tempFile, err := os.CreateTemp("", "port-monitor*.sh")
 	if err != nil {
-		return fmt.Errorf("failed to upload port monitor script: %w", err)
+		return fmt.Errorf("failed to create temporary file: %w", err)
+	}
+	defer os.Remove(tempFile.Name())
+
+	// Write the embedded script to the temporary file
+	if _, err = tempFile.WriteString(portMonitorScript); err != nil {
+		return fmt.Errorf("failed to write script to temporary file: %w", err)
+	}
+	tempFile.Close()
+
+	// Use gh cs cp to copy the script to the codespace
+	// Note: We use gh.Exec here because we just need the final result and don't need to track the process
+	args := []string{"codespace", "cp", "-c", codespaceName, "-e", tempFile.Name(), "remote:~/port-monitor.sh"}
+	_, stderr, err := gh.Exec(args...)
+	if err != nil {
+		return fmt.Errorf("error copying script to codespace: %w\nStderr: %s", err, stderr.String())
 	}
 
-	// Run the script and process its output
-	return runAndProcessOutput(ctx, codespaceName)
+	return nil
 }
 
 // uploadPortMonitorScript copies the port-monitor.sh script to the codespace

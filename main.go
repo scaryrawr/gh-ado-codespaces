@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -99,25 +100,9 @@ func main() {
 	// Combine all arguments
 	finalArgs := append(ghFlags, sshArgs...)
 
-	// Upload auth helpers and port monitor script
-	if err := UploadAuthHelpers(ctx, args.CodespaceName); err != nil {
-		// Continue anyway, as SSH might still work without auth helpers
-	}
-
-	// Upload port monitor script and make all scripts executable in a single SSH call
-	if err := uploadAndPrepareScripts(ctx, args.CodespaceName); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to prepare scripts: %v\n", err)
-	}
-
-	// Upload browser opener script if browser service is running
-	if browserService != nil {
-		if err := UploadBrowserOpenerScript(ctx, args.CodespaceName); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to upload browser opener script: %v\n", err)
-		} else {
-			// Print instructions for user to configure BROWSER environment variable
-			fmt.Fprintf(os.Stderr, "\nBrowser opener available! To enable browser forwarding, add to your shell config:\n")
-			fmt.Fprintf(os.Stderr, "  export BROWSER=\"$HOME/browser-opener.sh\"\n\n")
-		}
+	// Upload all scripts in parallel, then chmod + symlink in one SSH call
+	if err := prepareCodespaceScripts(ctx, args.CodespaceName, browserService != nil); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to prepare codespace scripts: %v\n", err)
 	}
 
 	// Start the port monitor in the background
@@ -176,19 +161,65 @@ func sanitizeForFilename(name string) string {
 	return result
 }
 
-// uploadAndPrepareScripts uploads the port monitor script and makes all scripts executable
-func uploadAndPrepareScripts(ctx context.Context, codespaceName string) error {
+// prepareCodespaceScripts uploads all helper scripts in parallel and then
+// makes them executable and creates symlinks in a single SSH call.
+func prepareCodespaceScripts(ctx context.Context, codespaceName string, hasBrowserService bool) error {
+	var wg sync.WaitGroup
+	var authErr, portErr, browserErr error
+
+	// Upload auth helpers
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		authErr = uploadAuthHelperFiles(ctx, codespaceName)
+	}()
+
 	// Upload port monitor script
-	if err := uploadPortMonitorScript(ctx, codespaceName); err != nil {
-		return fmt.Errorf("failed to upload port monitor script: %w", err)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		portErr = uploadPortMonitorFile(ctx, codespaceName)
+	}()
+
+	// Upload browser opener script
+	if hasBrowserService {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			browserErr = uploadBrowserOpenerFile(ctx, codespaceName)
+		}()
 	}
 
-	// Make all scripts executable in a single SSH call (consolidates 3 SSH connections into 1)
-	args := []string{"codespace", "ssh", "--codespace", codespaceName, "--",
-		"chmod", "+x", "~/ado-auth-helper", "~/azure-auth-helper", "~/port-monitor.sh"}
+	// Wait for all uploads to complete
+	wg.Wait()
+
+	// Log any upload errors but continue — the SSH session can still work
+	if authErr != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to upload auth helpers: %v\n", authErr)
+	}
+	if portErr != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to upload port monitor script: %v\n", portErr)
+	}
+	if browserErr != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to upload browser opener script: %v\n", browserErr)
+	}
+
+	// Single SSH call to make all scripts executable and create symlinks
+	chmodCmd := "chmod +x ~/ado-auth-helper ~/azure-auth-helper ~/port-monitor.sh ~/browser-opener.sh 2>/dev/null; " +
+		"(test -L /usr/local/bin/ado-auth-helper || sudo ln -sf ~/ado-auth-helper /usr/local/bin/ado-auth-helper) && " +
+		"(test -L /usr/local/bin/azure-auth-helper || sudo ln -sf ~/azure-auth-helper /usr/local/bin/azure-auth-helper)"
+
+	args := append([]string{"codespace", "ssh", "--codespace", codespaceName, "--"}, wrapBashLoginCommand(chmodCmd)...)
 	_, stderr, err := gh.Exec(args...)
 	if err != nil {
-		return fmt.Errorf("error making scripts executable: %w\nStderr: %s", err, stderr.String())
+		return fmt.Errorf("error preparing scripts: %w\nStderr: %s", err, stderr.String())
+	}
+
+	// Print success messages
+	fmt.Fprintln(os.Stderr, "ADO and Azure auth helpers uploaded to the codespace and made executable")
+	if hasBrowserService {
+		fmt.Fprintf(os.Stderr, "\nBrowser opener available! To enable browser forwarding, add to your shell config:\n")
+		fmt.Fprintf(os.Stderr, "  export BROWSER=\"$HOME/browser-opener.sh\"\n\n")
 	}
 
 	return nil

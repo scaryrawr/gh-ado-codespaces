@@ -238,17 +238,17 @@ func TestFormatFileSize(t *testing.T) {
 	}
 }
 
-// TestUploadPortMonitorScriptSignature verifies the function is accessible to main package
-func TestUploadPortMonitorScriptSignature(t *testing.T) {
-	// This test ensures uploadPortMonitorScript function exists and has correct signature
-	// The function is called by uploadAndPrepareScripts
+// TestUploadPortMonitorFileSignature verifies the function is accessible to main package
+func TestUploadPortMonitorFileSignature(t *testing.T) {
+	// This test ensures uploadPortMonitorFile function exists and has correct signature
+	// The function is called by prepareCodespaceScripts
 
 	// We can't call it directly in tests without a real codespace,
 	// but we can verify it compiles and has the right structure
 	t.Run("function_exists", func(t *testing.T) {
 		// If this test compiles, the function signature is correct
-		// uploadPortMonitorScript is called in main.go's uploadAndPrepareScripts
-		t.Log("uploadPortMonitorScript function signature verified at compile time")
+		// uploadPortMonitorFile is called in main.go's prepareCodespaceScripts
+		t.Log("uploadPortMonitorFile function signature verified at compile time")
 	})
 }
 

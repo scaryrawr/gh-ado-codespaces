@@ -137,6 +137,32 @@ func (bs *BrowserService) Stop() {
 	}
 }
 
+// uploadBrowserOpenerFile copies the browser-opener.sh script to the codespace
+// The script searches for the browser socket dynamically, so it only needs to be uploaded once
+func uploadBrowserOpenerFile(ctx context.Context, codespaceName string) error {
+	// Create a temporary file with the embedded script content
+	tempFile, err := os.CreateTemp("", "browser-opener*.sh")
+	if err != nil {
+		return fmt.Errorf("failed to create temporary file: %w", err)
+	}
+	defer os.Remove(tempFile.Name())
+
+	// Write the script as-is (no port replacement needed)
+	if _, err = tempFile.WriteString(browserOpenerScript); err != nil {
+		return fmt.Errorf("failed to write script to temporary file: %w", err)
+	}
+	tempFile.Close()
+
+	// Use gh cs cp to copy the script to the codespace
+	args := []string{"codespace", "cp", "-c", codespaceName, "-e", tempFile.Name(), "remote:~/browser-opener.sh"}
+	_, stderr, err := gh.Exec(args...)
+	if err != nil {
+		return fmt.Errorf("error copying script to codespace: %w\nStderr: %s", err, stderr.String())
+	}
+
+	return nil
+}
+
 // UploadBrowserOpenerScript copies the browser-opener.sh script to the codespace
 // The script searches for the browser socket dynamically, so it only needs to be uploaded once
 func UploadBrowserOpenerScript(ctx context.Context, codespaceName string) error {
