@@ -215,9 +215,11 @@ func prepareCodespaceScripts(ctx context.Context, codespaceName string, hasBrows
 		return fmt.Errorf("error preparing scripts: %w\nStderr: %s", err, stderr.String())
 	}
 
-	// Print success messages
-	fmt.Fprintln(os.Stderr, "ADO and Azure auth helpers uploaded to the codespace and made executable")
-	if hasBrowserService {
+	// Print success messages only for helpers that were uploaded successfully
+	if authErr == nil {
+		fmt.Fprintln(os.Stderr, "ADO and Azure auth helpers uploaded to the codespace and made executable")
+	}
+	if hasBrowserService && browserErr == nil {
 		fmt.Fprintf(os.Stderr, "\nBrowser opener available! To enable browser forwarding, add to your shell config:\n")
 		fmt.Fprintf(os.Stderr, "  export BROWSER=\"$HOME/browser-opener.sh\"\n\n")
 	}
