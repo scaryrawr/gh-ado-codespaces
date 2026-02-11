@@ -163,23 +163,6 @@ func uploadBrowserOpenerFile(ctx context.Context, codespaceName string) error {
 	return nil
 }
 
-// UploadBrowserOpenerScript copies the browser-opener.sh script to the codespace and makes it executable
-func UploadBrowserOpenerScript(ctx context.Context, codespaceName string) error {
-	if err := uploadBrowserOpenerFile(ctx, codespaceName); err != nil {
-		return err
-	}
-
-	// Make the script executable
-	chmodArgs := []string{"codespace", "ssh", "--codespace", codespaceName, "--", "chmod", "+x", "~/browser-opener.sh"}
-	_, stderr, err := gh.Exec(chmodArgs...)
-	if err != nil {
-		return fmt.Errorf("error making script executable: %w\nStderr: %s", err, stderr.String())
-	}
-
-	logDebug("Browser opener script uploaded and made executable")
-	return nil
-}
-
 // cleanupSocketFile removes the socket file at the specified path
 func cleanupSocketFile(socketPath string) {
 	if socketPath != "" {
