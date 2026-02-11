@@ -339,8 +339,8 @@ func TestBuildSSHArgsWithReverseForwards(t *testing.T) {
 	}
 }
 
-// TestUploadAndPrepareScripts tests the consolidated script preparation function
-func TestUploadAndPrepareScripts(t *testing.T) {
+// TestPrepareCodespaceScripts tests the consolidated script preparation function
+func TestPrepareCodespaceScripts(t *testing.T) {
 	// This is a unit test for the logic structure, not integration
 	// In real use, this would call gh CLI commands
 
@@ -349,9 +349,9 @@ func TestUploadAndPrepareScripts(t *testing.T) {
 	t.Run("function_signature", func(t *testing.T) {
 		// Verify function exists and has correct signature
 		// by attempting to reference it (compilation check)
-		var f func(context.Context, string) error = uploadAndPrepareScripts
+		var f func(context.Context, string, bool) error = prepareCodespaceScripts
 		if f == nil {
-			t.Error("uploadAndPrepareScripts function should be defined")
+			t.Error("prepareCodespaceScripts function should be defined")
 		}
 	})
 }
@@ -365,6 +365,7 @@ func TestConsolidatedChmodCall(t *testing.T) {
 		"~/ado-auth-helper",
 		"~/azure-auth-helper",
 		"~/port-monitor.sh",
+		"~/browser-opener.sh",
 	}
 
 	// Verify all expected files are present in the list
@@ -375,9 +376,9 @@ func TestConsolidatedChmodCall(t *testing.T) {
 		}
 	}
 
-	// Verify we're using the right number of files (3, not more)
-	if len(expectedFiles) != 3 {
-		t.Errorf("Expected 3 files to chmod, got %d", len(expectedFiles))
+	// Verify we're using the right number of files (4, not more)
+	if len(expectedFiles) != 4 {
+		t.Errorf("Expected 4 files to chmod, got %d", len(expectedFiles))
 	}
 }
 
