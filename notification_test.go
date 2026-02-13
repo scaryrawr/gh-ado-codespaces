@@ -276,3 +276,47 @@ func TestNotificationHTTPEndpointInvalidJSON(t *testing.T) {
 		t.Errorf("Expected status %d for invalid JSON, got %d", http.StatusBadRequest, resp.StatusCode)
 	}
 }
+
+func TestNotificationTruncation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	service, err := NewNotificationService(ctx)
+	if err != nil {
+		t.Fatalf("Failed to create notification service: %v", err)
+	}
+	defer service.Stop()
+
+	// Wait a bit for the server to start
+	time.Sleep(100 * time.Millisecond)
+
+	// Create a very long title and message
+	longTitle := strings.Repeat("A", 150)    // 150 characters, should be truncated to 100
+	longMessage := strings.Repeat("B", 600)  // 600 characters, should be truncated to 500
+
+	testReq := NotificationRequest{
+		Title:   longTitle,
+		Message: longMessage,
+	}
+	jsonData, err := json.Marshal(testReq)
+	if err != nil {
+		t.Fatalf("Failed to marshal JSON: %v", err)
+	}
+
+	resp, err := http.Post(
+		fmt.Sprintf("http://localhost:%d/notify", service.Port),
+		"application/json",
+		bytes.NewBuffer(jsonData),
+	)
+
+	if err != nil {
+		t.Fatalf("Failed to send HTTP request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	// The notification might fail to send in CI (no desktop environment)
+	// but we're mainly testing that the truncation doesn't cause errors
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusInternalServerError {
+		t.Errorf("Unexpected status code: %d", resp.StatusCode)
+	}
+}

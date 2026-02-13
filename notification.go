@@ -119,6 +119,29 @@ func (ns *NotificationService) handleNotification(w http.ResponseWriter, r *http
 		return
 	}
 
+	// Enforce reasonable length limits on title and message to avoid issues with
+	// desktop notification systems that may not handle very long text well.
+	const maxTitleLen = 100
+	const maxMessageLen = 500
+
+	truncateWithEllipsis := func(s string, max int) string {
+		if max <= 0 {
+			return ""
+		}
+		runes := []rune(s)
+		if len(runes) <= max {
+			return s
+		}
+		// Reserve space for the ellipsis.
+		if max <= 3 {
+			return string(runes[:max])
+		}
+		return string(runes[:max-3]) + "..."
+	}
+
+	req.Title = truncateWithEllipsis(req.Title, maxTitleLen)
+	req.Message = truncateWithEllipsis(req.Message, maxMessageLen)
+
 	logDebug("Sending notification: title=%s, message=%s", req.Title, req.Message)
 
 	// Send the notification using beeep
@@ -147,7 +170,7 @@ func (ns *NotificationService) Stop() {
 		ns.wg.Wait()
 
 		// Clean up socket file
-		cleanupNotificationSocketFile(ns.SocketPath)
+		cleanupSocketFile(ns.SocketPath)
 
 		logDebug("NotificationService: stopped")
 	}
@@ -184,15 +207,4 @@ func UploadNotificationSenderScript(ctx context.Context, codespaceName string) e
 
 	logDebug("Notification sender script uploaded and made executable")
 	return nil
-}
-
-// cleanupNotificationSocketFile removes the socket file at the specified path
-func cleanupNotificationSocketFile(socketPath string) {
-	if socketPath != "" {
-		if err := os.Remove(socketPath); err != nil && !os.IsNotExist(err) {
-			logDebug("Failed to remove notification socket file %s: %v", socketPath, err)
-		} else {
-			logDebug("Cleaned up notification socket file: %s", socketPath)
-		}
-	}
 }

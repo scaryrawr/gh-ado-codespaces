@@ -10,7 +10,7 @@
 #   fi
 #
 # To use this script with zsh, add to your ~/.zshrc:
-#   # Load notification support  
+#   # Load notification support
 #   if [ -f "$HOME/notification-sender.sh" ]; then
 #       source "$HOME/notification-sender.sh"
 #   fi
@@ -91,14 +91,29 @@ __send_notification() {
 
 # Bash-specific hooks
 if [ -n "$BASH_VERSION" ]; then
+    # Track if we're in a command execution to avoid nested timing
+    __notification_in_command=0
+    
     # Function called before each command
     __notification_preexec() {
-        __notification_cmd_start_time=$(date +%s)
+        # Only set start time if we're not already in a command
+        # This prevents nested commands from overwriting the start time
+        if [ $__notification_in_command -eq 0 ]; then
+            __notification_cmd_start_time=$(date +%s)
+            __notification_in_command=1
+        fi
     }
     
     # Function called after each command
     __notification_precmd() {
         local exit_code=$?
+        
+        # Only process if we were actually timing a command
+        if [ $__notification_in_command -eq 0 ]; then
+            return
+        fi
+        
+        __notification_in_command=0
         local end_time=$(date +%s)
         local duration=$((end_time - __notification_cmd_start_time))
         

@@ -140,13 +140,36 @@ The extension provides command completion notifications from your codespace to y
 1. When you connect, a notification sender script is uploaded to your codespace at `~/notification-sender.sh`
 2. A local notification service is started that listens for notification requests
 3. The service port is forwarded to the codespace via SSH reverse port forwarding
-4. Users can enable notifications by adding to their shell config (e.g., `~/.bashrc` or `~/.zshrc`):
+4. Users can enable notifications by adding to their shell config:
+   
+   **Bash or Zsh** (`~/.bashrc` or `~/.zshrc`):
    ```bash
    # For bash or zsh
    if [ -f "$HOME/notification-sender.sh" ]; then
        source "$HOME/notification-sender.sh"
    fi
    ```
+   
+   **Fish shell** (`~/.config/fish/config.fish`):
+   
+   For Fish shell users, we recommend using the [done](https://github.com/franciscolourenco/done) plugin which provides native Fish integration for command completion notifications.
+   
+   Install using Fisher:
+   ```fish
+   fisher install franciscolourenco/done
+   ```
+   
+   Or install manually:
+   ```fish
+   curl -Lo ~/.config/fish/conf.d/done.fish --create-dirs https://raw.githubusercontent.com/franciscolourenco/done/master/conf.d/done.fish
+   ```
+   
+   The `done` plugin will automatically detect when commands finish and can be configured with:
+   ```fish
+   # Set minimum command duration (default is 5000 ms)
+   set -U __done_min_cmd_duration 5000
+   ```
+
 5. When a command takes longer than 5 seconds (configurable), you'll receive a desktop notification with:
    - Command status (completed or failed)
    - The command that was run
@@ -164,6 +187,7 @@ export NOTIFICATION_MIN_DURATION=10  # Default is 5 seconds
 **Supported Shells:**
 - Bash (via DEBUG trap and PROMPT_COMMAND)
 - Zsh (via preexec and precmd hooks)
+- Fish (via the [done](https://github.com/franciscolourenco/done) plugin - recommended for Fish users)
 
 The notification system works cross-platform and uses:
 - **macOS**: Native notification center
