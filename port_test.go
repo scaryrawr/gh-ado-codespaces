@@ -349,7 +349,7 @@ func TestPrepareCodespaceScripts(t *testing.T) {
 	t.Run("function_signature", func(t *testing.T) {
 		// Verify function exists and has correct signature
 		// by attempting to reference it (compilation check)
-		var f func(context.Context, string, bool) error = prepareCodespaceScripts
+		var f func(context.Context, string, bool, bool) error = prepareCodespaceScripts
 		if f == nil {
 			t.Error("prepareCodespaceScripts function should be defined")
 		}

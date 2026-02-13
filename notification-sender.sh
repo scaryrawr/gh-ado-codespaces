@@ -38,7 +38,8 @@ __find_notification_socket() {
     
     # Find all notification sockets in /tmp (pattern: gh-ado-notification-*.sock)
     # Sort by modification time (newest first) to prefer active sockets
-    local NOTIFICATION_SOCKETS=$(find /tmp -maxdepth 1 -name "gh-ado-notification-*.sock" -type s -print0 2>/dev/null | xargs -0 -r ls -t 2>/dev/null | head -1)
+    # Use find -exec for better portability across different xargs implementations
+    local NOTIFICATION_SOCKETS=$(find /tmp -maxdepth 1 -name "gh-ado-notification-*.sock" -type s -exec ls -t {} + 2>/dev/null | head -1)
     
     if [ -n "$NOTIFICATION_SOCKETS" ]; then
         __notification_socket_cache="$NOTIFICATION_SOCKETS"

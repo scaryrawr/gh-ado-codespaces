@@ -208,3 +208,29 @@ func UploadNotificationSenderScript(ctx context.Context, codespaceName string) e
 	logDebug("Notification sender script uploaded and made executable")
 	return nil
 }
+
+// uploadNotificationSenderFile uploads the notification-sender.sh script file only
+// (chmod is handled by prepareCodespaceScripts for efficiency)
+func uploadNotificationSenderFile(ctx context.Context, codespaceName string) error {
+	// Create a temporary file with the embedded script content
+	tempFile, err := os.CreateTemp("", "notification-sender*.sh")
+	if err != nil {
+		return fmt.Errorf("failed to create temporary file: %w", err)
+	}
+	defer os.Remove(tempFile.Name())
+
+	// Write the script content
+	if _, err = tempFile.WriteString(notificationSenderScript); err != nil {
+		return fmt.Errorf("failed to write script to temporary file: %w", err)
+	}
+	tempFile.Close()
+
+	// Use gh cs cp to copy the script to the codespace
+	args := []string{"codespace", "cp", "-c", codespaceName, "-e", tempFile.Name(), "remote:~/notification-sender.sh"}
+	_, stderr, err := gh.Exec(args...)
+	if err != nil {
+		return fmt.Errorf("error copying script to codespace: %w\nStderr: %s", err, stderr.String())
+	}
+
+	return nil
+}
