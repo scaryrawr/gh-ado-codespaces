@@ -62,32 +62,48 @@ __send_notification() {
         return 0
     fi
     
-    local NOTIFICATION_SOCKET=$(__find_notification_socket)
-    
-    if [ -z "$NOTIFICATION_SOCKET" ]; then
-        # No socket found - notification service not available
-        return 0
-    fi
-    
     # Check if curl is available
     if ! command -v curl >/dev/null 2>&1; then
         # curl not available, skip notification
         return 0
     fi
-    
-    # Send notification to the socket via HTTP POST using curl with --unix-socket
-    # --max-time 2 ensures we fail fast on dead sockets
-    if curl -s --max-time 2 --unix-socket "$NOTIFICATION_SOCKET" -X POST \
-        -H "Content-Type: application/json" \
-        -d "{\"title\":$(printf %s "$title" | jq -Rs .), \"message\":$(printf %s "$message" | jq -Rs .)}" \
-        "http://localhost/notify" >/dev/null 2>&1; then
-        # Success
-        return 0
-    else
-        # Failed - invalidate cache to force re-discovery next time
-        __notification_socket_cache=""
-        return 1
+
+    # Try cached socket first, then all discovered sockets (newest first).
+    # This avoids getting stuck on stale socket files from old sessions.
+    local socket_candidates=""
+    if [ -n "$__notification_socket_cache" ]; then
+        socket_candidates="$__notification_socket_cache"$'\n'
     fi
+
+    local discovered_sockets=$(find /tmp -maxdepth 1 -name "gh-ado-notification-*.sock" -type s -exec ls -t {} + 2>/dev/null)
+    if [ -n "$discovered_sockets" ]; then
+        socket_candidates="${socket_candidates}${discovered_sockets}"
+    fi
+
+    if [ -z "$socket_candidates" ]; then
+        # No socket found - notification service not available
+        return 0
+    fi
+
+    local NOTIFICATION_SOCKET
+    while IFS= read -r NOTIFICATION_SOCKET; do
+        [ -z "$NOTIFICATION_SOCKET" ] && continue
+
+        # Send notification to the socket via HTTP POST using curl with --unix-socket
+        # --max-time 2 ensures we fail fast on dead sockets
+        if curl -s --max-time 2 --unix-socket "$NOTIFICATION_SOCKET" -X POST \
+            -H "Content-Type: application/json" \
+            -d "{\"title\":$(printf %s "$title" | jq -Rs .), \"message\":$(printf %s "$message" | jq -Rs .)}" \
+            "http://localhost/notify" >/dev/null 2>&1; then
+            __notification_socket_cache="$NOTIFICATION_SOCKET"
+            __notification_socket_cache_time=$(date +%s)
+            return 0
+        fi
+    done <<< "$socket_candidates"
+
+    # Failed on all candidates - invalidate cache to force re-discovery next time.
+    __notification_socket_cache=""
+    return 1
 }
 
 # Bash-specific hooks

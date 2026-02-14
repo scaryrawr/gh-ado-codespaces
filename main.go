@@ -239,6 +239,9 @@ func prepareCodespaceScripts(ctx context.Context, codespaceName string, hasBrows
 	chmodCmd := "chmod +x ~/ado-auth-helper ~/azure-auth-helper ~/port-monitor.sh ~/browser-opener.sh ~/notification-sender.sh 2>/dev/null; " +
 		"(test -L /usr/local/bin/ado-auth-helper || sudo ln -sf ~/ado-auth-helper /usr/local/bin/ado-auth-helper) && " +
 		"(test -L /usr/local/bin/azure-auth-helper || sudo ln -sf ~/azure-auth-helper /usr/local/bin/azure-auth-helper)"
+	if cleanupCmd := buildStaleSocketCleanupCommand(hasBrowserService, hasNotificationService); cleanupCmd != "" {
+		chmodCmd += "; " + cleanupCmd
+	}
 
 	args := append([]string{"codespace", "ssh", "--codespace", codespaceName, "--"}, wrapBashLoginCommand(chmodCmd)...)
 	_, stderr, err := gh.Exec(args...)
@@ -256,6 +259,24 @@ func prepareCodespaceScripts(ctx context.Context, codespaceName string, hasBrows
 	}
 
 	return nil
+}
+
+func buildStaleSocketCleanupCommand(hasBrowserService, hasNotificationService bool) string {
+	var cleanupCommands []string
+
+	if hasBrowserService {
+		cleanupCommands = append(cleanupCommands, `for socket in /tmp/gh-ado-browser-*.sock; do [ -S "$socket" ] || continue; if ! curl -s --max-time 1 --unix-socket "$socket" "http://localhost/" >/dev/null 2>&1; then rm -f "$socket"; fi; done`)
+	}
+
+	if hasNotificationService {
+		cleanupCommands = append(cleanupCommands, `for socket in /tmp/gh-ado-notification-*.sock; do [ -S "$socket" ] || continue; if ! curl -s --max-time 1 --unix-socket "$socket" "http://localhost/" >/dev/null 2>&1; then rm -f "$socket"; fi; done`)
+	}
+
+	if len(cleanupCommands) == 0 {
+		return ""
+	}
+
+	return "if command -v curl >/dev/null 2>&1; then " + strings.Join(cleanupCommands, " ; ") + "; fi"
 }
 
 // getSessionLogDirectory returns the session-specific log directory
