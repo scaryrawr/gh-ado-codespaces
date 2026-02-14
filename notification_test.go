@@ -291,8 +291,8 @@ func TestNotificationTruncation(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Create a very long title and message
-	longTitle := strings.Repeat("A", 150)    // 150 characters, should be truncated to 100
-	longMessage := strings.Repeat("B", 600)  // 600 characters, should be truncated to 500
+	longTitle := strings.Repeat("A", 150)   // 150 characters, should be truncated to 100
+	longMessage := strings.Repeat("B", 600) // 600 characters, should be truncated to 500
 
 	testReq := NotificationRequest{
 		Title:   longTitle,

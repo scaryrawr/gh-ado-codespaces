@@ -31,41 +31,19 @@ The extension provides command completion notifications from your codespace to y
    curl -Lo ~/.config/fish/conf.d/done.fish --create-dirs https://raw.githubusercontent.com/franciscolourenco/done/master/conf.d/done.fish
    ```
    
-   After installing the `done` plugin, configure it to use the gh-ado-codespaces notification system by creating a custom notification command in your Fish config:
+   After installing the `done` plugin, configure it to use the gh-ado-codespaces notification system in your Fish config:
    ```fish
+   # Required: allow done to work over SSH (codespace sessions use SSH)
+   set -U __done_allow_nongraphical 1
+
    # Configure done plugin to use gh-ado-codespaces notification service
-   set -U __done_notification_command "~/notification-sender.sh send '\$title' '\$message'"
+   set -U __done_notification_command "~/notification-sender.sh send \$title \$message"
    
    # Set minimum command duration (default is 5000 ms = 5 seconds)
    set -U __done_min_cmd_duration 5000
    ```
    
-   You'll also need to create a helper wrapper script at `~/notification-sender.sh` in your codespace:
-   ```bash
-   #!/usr/bin/env bash
-   # Wrapper for Fish done plugin to send notifications
-   
-   if [ "$1" = "send" ]; then
-       title="$2"
-       message="$3"
-       
-       # Find notification socket
-       SOCKET=$(find /tmp -maxdepth 1 -name "gh-ado-notification-*.sock" -type s -exec ls -t {} + 2>/dev/null | head -1)
-       
-       if [ -n "$SOCKET" ]; then
-           # Send notification via curl
-           curl -s --max-time 2 --unix-socket "$SOCKET" -X POST \
-               -H "Content-Type: application/json" \
-               -d "{\"title\":\"$title\",\"message\":\"$message\"}" \
-               "http://localhost/notify" >/dev/null 2>&1
-       fi
-   fi
-   ```
-   
-   Make the script executable:
-   ```bash
-   chmod +x ~/notification-sender.sh
-   ```
+   The `notification-sender.sh` script is automatically uploaded when you connect, so no additional setup is needed.
 
 5. When a command takes longer than 5 seconds (configurable), you'll receive a desktop notification with:
    - Command status (completed or failed)

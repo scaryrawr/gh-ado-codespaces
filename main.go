@@ -2,17 +2,16 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"sort"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 
-	// Added for time.Sleep
 	"github.com/cli/go-gh/v2"
 )
 
@@ -64,28 +63,61 @@ func main() {
 		}
 	}
 
-	// Setup server for authentication
-	serverConfig, err := SetupServer(ctx)
-	if err != nil {
-		return
-	}
-	defer serverConfig.Listener.Close()
-
-	// If no codespace name is provided, prompt for selection
+	// Setup server and (optionally) select codespace.
+	// When we need to prompt for a codespace, run both in parallel since
+	// SetupServer and SelectCodespace are independent.
+	var serverConfig *ServerConfig
 	if args.CodespaceName == "" {
-		selectedName, err := SelectCodespace(ctx, args.Repo, args.RepoOwner)
+		type serverResult struct {
+			config *ServerConfig
+			err    error
+		}
+		type codespaceResult struct {
+			name string
+			err  error
+		}
+
+		serverCh := make(chan serverResult, 1)
+		codespaceCh := make(chan codespaceResult, 1)
+
+		go func() {
+			cfg, err := SetupServer(ctx)
+			serverCh <- serverResult{cfg, err}
+		}()
+
+		go func() {
+			name, err := SelectCodespace(ctx, args.Repo, args.RepoOwner)
+			codespaceCh <- codespaceResult{name, err}
+		}()
+
+		sr := <-serverCh
+		cr := <-codespaceCh
+
+		if sr.err != nil || cr.err != nil {
+			if sr.config != nil {
+				sr.config.Listener.Close()
+			}
+
+			return
+		}
+
+		serverConfig = sr.config
+		args.CodespaceName = cr.name
+	} else {
+		var err error
+		serverConfig, err = SetupServer(ctx)
 		if err != nil {
 			return
 		}
-		args.CodespaceName = selectedName
 	}
+	defer serverConfig.Listener.Close()
 
 	// Initialize session ID now that we have the codespace name
 	initializeSessionID(args.CodespaceName)
 
 	// Start the browser service early so we can include its port in SSH args
 	var browserService *BrowserService
-	browserService, err = NewBrowserService(ctx)
+	browserService, err := NewBrowserService(ctx)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to start browser service: %v\n", err)
 		// Continue anyway, SSH will still work without browser forwarding
@@ -110,7 +142,7 @@ func main() {
 	// Combine all arguments
 	finalArgs := append(ghFlags, sshArgs...)
 
-	// Upload all scripts in parallel, then chmod + symlink in one SSH call
+	// Upload all scripts and configure them in a single SSH call
 	if err := prepareCodespaceScripts(ctx, args.CodespaceName, browserService != nil, notificationService != nil); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to prepare codespace scripts: %v\n", err)
 	}
@@ -121,7 +153,10 @@ func main() {
 		fmt.Fprintf(os.Stderr, "  # For bash (~/.bashrc) or zsh (~/.zshrc)\n")
 		fmt.Fprintf(os.Stderr, "  if [ -f \"$HOME/notification-sender.sh\" ]; then\n")
 		fmt.Fprintf(os.Stderr, "      source \"$HOME/notification-sender.sh\"\n")
-		fmt.Fprintf(os.Stderr, "  fi\n\n")
+		fmt.Fprintf(os.Stderr, "  fi\n")
+		fmt.Fprintf(os.Stderr, "  # For fish with done plugin (~/.config/fish/config.fish)\n")
+		fmt.Fprintf(os.Stderr, "  set -U __done_allow_nongraphical 1\n")
+		fmt.Fprintf(os.Stderr, "  set -U __done_notification_command \"~/notification-sender.sh send \\$title \\$message\"\n\n")
 	}
 
 	// Start the port monitor in the background
@@ -180,80 +215,68 @@ func sanitizeForFilename(name string) string {
 	return result
 }
 
-// prepareCodespaceScripts uploads all helper scripts in parallel and then
-// makes them executable and creates symlinks in a single SSH call.
+// prepareCodespaceScripts writes all helper scripts to the codespace in a
+// single SSH call using base64-encoded content, then makes them executable
+// and creates symlinks. This avoids multiple expensive relay connections.
 func prepareCodespaceScripts(ctx context.Context, codespaceName string, hasBrowserService, hasNotificationService bool) error {
-	var wg sync.WaitGroup
-	var authErr, portErr, browserErr, notificationErr error
+	var cmdParts []string
 
-	// Upload auth helpers
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		authErr = uploadAuthHelperFiles(ctx, codespaceName)
-	}()
+	// Base64-encode and write auth helper to two destinations
+	authB64 := base64.StdEncoding.EncodeToString([]byte(adoAuthHelperScript))
+	cmdParts = append(cmdParts,
+		fmt.Sprintf("printf %%s %s | base64 -d > ~/ado-auth-helper && cp ~/ado-auth-helper ~/azure-auth-helper", authB64))
 
-	// Upload port monitor script
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		portErr = uploadPortMonitorFile(ctx, codespaceName)
-	}()
+	// Base64-encode and write port monitor script
+	portB64 := base64.StdEncoding.EncodeToString([]byte(portMonitorScript))
+	cmdParts = append(cmdParts,
+		fmt.Sprintf("printf %%s %s | base64 -d > ~/port-monitor.sh", portB64))
 
-	// Upload browser opener script
+	// Browser opener (only if browser service is available)
 	if hasBrowserService {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			browserErr = uploadBrowserOpenerFile(ctx, codespaceName)
-		}()
+		browserB64 := base64.StdEncoding.EncodeToString([]byte(browserOpenerScript))
+		cmdParts = append(cmdParts,
+			fmt.Sprintf("printf %%s %s | base64 -d > ~/browser-opener.sh", browserB64))
 	}
 
-	// Upload notification sender script
+	// Notification sender (only if notification service is available)
 	if hasNotificationService {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			notificationErr = uploadNotificationSenderFile(ctx, codespaceName)
-		}()
+		notifB64 := base64.StdEncoding.EncodeToString([]byte(notificationSenderScript))
+		cmdParts = append(cmdParts,
+			fmt.Sprintf("printf %%s %s | base64 -d > ~/notification-sender.sh", notifB64))
 	}
 
-	// Wait for all uploads to complete
-	wg.Wait()
+	// Make all scripts executable
+	chmodFiles := "~/ado-auth-helper ~/azure-auth-helper ~/port-monitor.sh"
+	if hasBrowserService {
+		chmodFiles += " ~/browser-opener.sh"
+	}
+	if hasNotificationService {
+		chmodFiles += " ~/notification-sender.sh"
+	}
+	cmdParts = append(cmdParts, "chmod +x "+chmodFiles)
 
-	// Log any upload errors but continue — the SSH session can still work
-	if authErr != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to upload auth helpers: %v\n", authErr)
-	}
-	if portErr != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to upload port monitor script: %v\n", portErr)
-	}
-	if browserErr != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to upload browser opener script: %v\n", browserErr)
-	}
-	if notificationErr != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to upload notification sender script: %v\n", notificationErr)
-	}
+	// Create symlinks for auth helpers
+	cmdParts = append(cmdParts,
+		"(test -L /usr/local/bin/ado-auth-helper || sudo ln -sf ~/ado-auth-helper /usr/local/bin/ado-auth-helper)")
+	cmdParts = append(cmdParts,
+		"(test -L /usr/local/bin/azure-auth-helper || sudo ln -sf ~/azure-auth-helper /usr/local/bin/azure-auth-helper)")
 
-	// Single SSH call to make all scripts executable and create symlinks
-	chmodCmd := "chmod +x ~/ado-auth-helper ~/azure-auth-helper ~/port-monitor.sh ~/browser-opener.sh ~/notification-sender.sh 2>/dev/null; " +
-		"(test -L /usr/local/bin/ado-auth-helper || sudo ln -sf ~/ado-auth-helper /usr/local/bin/ado-auth-helper) && " +
-		"(test -L /usr/local/bin/azure-auth-helper || sudo ln -sf ~/azure-auth-helper /usr/local/bin/azure-auth-helper)"
+	// Clean up stale sockets
 	if cleanupCmd := buildStaleSocketCleanupCommand(hasBrowserService, hasNotificationService); cleanupCmd != "" {
-		chmodCmd += "; " + cleanupCmd
+		cmdParts = append(cmdParts, cleanupCmd)
 	}
 
-	args := append([]string{"codespace", "ssh", "--codespace", codespaceName, "--"}, wrapBashLoginCommand(chmodCmd)...)
+	fullCmd := strings.Join(cmdParts, " && ")
+
+	args := append([]string{"codespace", "ssh", "--codespace", codespaceName, "--"}, wrapBashLoginCommand(fullCmd)...)
 	_, stderr, err := gh.Exec(args...)
 	if err != nil {
 		return fmt.Errorf("error preparing scripts: %w\nStderr: %s", err, stderr.String())
 	}
 
-	// Print success messages only for helpers that were uploaded successfully
-	if authErr == nil {
-		fmt.Fprintln(os.Stderr, "ADO and Azure auth helpers uploaded to the codespace and made executable")
-	}
-	if hasBrowserService && browserErr == nil {
+	// Print success messages
+	fmt.Fprintln(os.Stderr, "ADO and Azure auth helpers uploaded to the codespace and made executable")
+	if hasBrowserService {
 		fmt.Fprintf(os.Stderr, "\nBrowser opener available! To enable browser forwarding, add to your shell config:\n")
 		fmt.Fprintf(os.Stderr, "  export BROWSER=\"$HOME/browser-opener.sh\"\n\n")
 	}
