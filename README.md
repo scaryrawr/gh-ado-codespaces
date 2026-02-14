@@ -8,7 +8,9 @@ When working with GitHub Codespaces and Azure DevOps services, authentication ca
 
 1. Securely forwarding your local Azure CLI credentials to your codespace
 2. Automatically detecting and forwarding application ports from your codespace to your local machine
-3. Providing a seamless development experience with GitHub Codespaces and Azure DevOps
+3. Enabling browser opening from your codespace to your local browser
+4. Providing command completion notifications to your local desktop
+5. Providing a seamless development experience with GitHub Codespaces and Azure DevOps
 
 ## Requirements
 
@@ -97,119 +99,21 @@ You can create or update this setting directly from the command line by supplyin
 
 ## How It Works
 
-### Authentication Flow
-
-The extension leverages Azure CLI credentials on your local machine to authenticate with Azure DevOps:
-
-1. A Node.js service using the `@azure/identity` package connects to your Azure CLI credentials
-2. An SSH connection forwards this service to a Unix socket in the codespace
-3. Development tools inside the codespace request tokens through the ADO Auth Helper
-
-### Browser Opening
-
-The extension provides browser opening from your codespace to your local machine:
-
-1. When you connect, a browser opener script is uploaded to your codespace at `~/browser-opener.sh`
-2. The script is automatically configured with the browser service port (no manual configuration needed)
-3. A local HTTP service is started that listens for browser open requests
-4. The service port is forwarded to the codespace via SSH reverse port forwarding
-5. Users can configure their shell to use the browser opener by adding to their shell config (e.g., `~/.bashrc` or `~/.zshrc`):
-   ```bash
-   export BROWSER="$HOME/browser-opener.sh"
-   ```
-6. When any tool in the codespace tries to open a URL (e.g., via `xdg-open`, `python -m webbrowser`, etc.), it uses the `BROWSER` environment variable
-7. The script sends an HTTP request to the local machine with the URL
-8. Your local browser opens automatically with the requested URL
-
-This is particularly useful for:
-- Opening documentation links from CLI tools
-- Viewing web-based development servers running in your codespace
-- Accessing OAuth flows and authentication pages
-- Opening links from terminal-based applications
-
-The browser opener works cross-platform and will use your default browser on Windows, macOS, and Linux.
-
-**Note:** You only need to set the `BROWSER` environment variable once in your shell configuration. The port is automatically configured in the script when it's uploaded.
-
-### Port Forwarding
-
-The automatic port forwarding system works in two directions:
-
-#### Forward Port Forwarding (Codespace → Local Machine)
-
-The extension detects when applications in your codespace start listening on network ports:
-
-1. A port monitor runs in your codespace and detects new listening ports
-2. Port events are sent to your local machine through the SSH connection
-3. New SSH tunnels are created automatically for each detected port
-4. Applications running in your codespace become accessible via `localhost:<port>` locally
-
-#### Reverse Port Forwarding (Local Machine → Codespace)
-
-The extension automatically shares local AI services to your codespace:
-
-1. When connecting, the extension checks if Ollama (port 11434) or LM Studio (port 1234) are running locally
-2. If either service is detected, a reverse SSH tunnel is automatically created
-3. Your codespace can then access these services via `localhost:1234` or `localhost:11434`
-4. This enables you to use your local AI models and services from within your codespace
-
-This is particularly useful for:
-- Running Ollama models on your local machine while coding in a codespace
-- Using LM Studio's local inference server from your codespace
-- Sharing any locally-running AI services with your remote development environment
+| Feature | Description |
+|---|---|
+| [Authentication](docs/authentication.md) | Forwards local Azure CLI credentials to your codespace for ADO access |
+| [Browser Opening](docs/browser-opening.md) | Opens URLs from your codespace in your local browser |
+| [Notifications](docs/notifications.md) | Desktop notifications when long-running commands finish |
+| [Port Forwarding](docs/port-forwarding.md) | Automatic bi-directional port forwarding (including local AI services) |
 
 ## Testing
-
-This project includes a comprehensive unit test suite that covers:
-
-- **Command line argument parsing and validation** (`args_test.go`)
-  - Azure subscription ID format validation
-  - Command line flag building for `gh codespace ssh`
-  - SSH argument construction with browser service integration
-
-- **Configuration file handling** (`config_test.go`)
-  - Azure subscription storage and retrieval per GitHub account
-  - JSON configuration file loading and saving
-  - Error handling for malformed configuration files
-
-- **Browser opening functionality** (`browser_test.go`)
-  - HTTP-based browser service creation and lifecycle management
-  - Cross-platform URL opening support via HTTP endpoint
-  - HTTP method and parameter validation
-  - SSH argument integration with browser port forwarding
-
-- **Utility functions** (`main_test.go`)
-  - Filename sanitization for session directories  
-  - Session ID generation and formatting
-  - File size formatting for log file listings
-
-- **Codespace operations** (`codespace_test.go`)
-  - Codespace list item formatting with colors and status indicators
-  - Git status indicators (ahead commits, uncommitted/unpushed changes)
-  - Codespace sorting by availability status
-
-- **GitHub integration** (`github_login_test.go`)
-  - GitHub CLI authentication integration tests
-  - GitHub username validation
-
-### Running Tests
 
 Run all tests:
 ```bash
 go test -v ./...
 ```
 
-Run tests with race detection:
-```bash
-go test -v -race ./...
-```
-
-Run only fast unit tests (skip integration tests):
-```bash
-go test -short -v ./...
-```
-
-The test suite maintains compatibility with the existing CI/CD pipeline and ensures all functionality works correctly without external dependencies in most cases.
+See [docs/testing.md](docs/testing.md) for the full test suite overview and additional commands.
 
 ## Limitations
 

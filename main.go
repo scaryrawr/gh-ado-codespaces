@@ -93,16 +93,35 @@ func main() {
 		defer browserService.Stop()
 	}
 
+	// Start the notification service early so we can include its port in SSH args
+	var notificationService *NotificationService
+	notificationService, err = NewNotificationService(ctx)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to start notification service: %v\n", err)
+		// Continue anyway, SSH will still work without notification forwarding
+	} else {
+		defer notificationService.Stop()
+	}
+
 	// Build command line arguments for gh
 	ghFlags := args.BuildGHFlags()
-	sshArgs := args.BuildSSHArgs(serverConfig.SocketPath, serverConfig.Port, browserService)
+	sshArgs := args.BuildSSHArgs(serverConfig.SocketPath, serverConfig.Port, browserService, notificationService)
 
 	// Combine all arguments
 	finalArgs := append(ghFlags, sshArgs...)
 
 	// Upload all scripts in parallel, then chmod + symlink in one SSH call
-	if err := prepareCodespaceScripts(ctx, args.CodespaceName, browserService != nil); err != nil {
+	if err := prepareCodespaceScripts(ctx, args.CodespaceName, browserService != nil, notificationService != nil); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to prepare codespace scripts: %v\n", err)
+	}
+
+	// Print instructions for notification service if it's running and script upload succeeded
+	if notificationService != nil {
+		fmt.Fprintf(os.Stderr, "Command completion notifications available! To enable, add to your shell config:\n")
+		fmt.Fprintf(os.Stderr, "  # For bash (~/.bashrc) or zsh (~/.zshrc)\n")
+		fmt.Fprintf(os.Stderr, "  if [ -f \"$HOME/notification-sender.sh\" ]; then\n")
+		fmt.Fprintf(os.Stderr, "      source \"$HOME/notification-sender.sh\"\n")
+		fmt.Fprintf(os.Stderr, "  fi\n\n")
 	}
 
 	// Start the port monitor in the background
@@ -163,9 +182,9 @@ func sanitizeForFilename(name string) string {
 
 // prepareCodespaceScripts uploads all helper scripts in parallel and then
 // makes them executable and creates symlinks in a single SSH call.
-func prepareCodespaceScripts(ctx context.Context, codespaceName string, hasBrowserService bool) error {
+func prepareCodespaceScripts(ctx context.Context, codespaceName string, hasBrowserService, hasNotificationService bool) error {
 	var wg sync.WaitGroup
-	var authErr, portErr, browserErr error
+	var authErr, portErr, browserErr, notificationErr error
 
 	// Upload auth helpers
 	wg.Add(1)
@@ -190,6 +209,15 @@ func prepareCodespaceScripts(ctx context.Context, codespaceName string, hasBrows
 		}()
 	}
 
+	// Upload notification sender script
+	if hasNotificationService {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			notificationErr = uploadNotificationSenderFile(ctx, codespaceName)
+		}()
+	}
+
 	// Wait for all uploads to complete
 	wg.Wait()
 
@@ -203,11 +231,17 @@ func prepareCodespaceScripts(ctx context.Context, codespaceName string, hasBrows
 	if browserErr != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to upload browser opener script: %v\n", browserErr)
 	}
+	if notificationErr != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to upload notification sender script: %v\n", notificationErr)
+	}
 
 	// Single SSH call to make all scripts executable and create symlinks
-	chmodCmd := "chmod +x ~/ado-auth-helper ~/azure-auth-helper ~/port-monitor.sh ~/browser-opener.sh 2>/dev/null; " +
+	chmodCmd := "chmod +x ~/ado-auth-helper ~/azure-auth-helper ~/port-monitor.sh ~/browser-opener.sh ~/notification-sender.sh 2>/dev/null; " +
 		"(test -L /usr/local/bin/ado-auth-helper || sudo ln -sf ~/ado-auth-helper /usr/local/bin/ado-auth-helper) && " +
 		"(test -L /usr/local/bin/azure-auth-helper || sudo ln -sf ~/azure-auth-helper /usr/local/bin/azure-auth-helper)"
+	if cleanupCmd := buildStaleSocketCleanupCommand(hasBrowserService, hasNotificationService); cleanupCmd != "" {
+		chmodCmd += "; " + cleanupCmd
+	}
 
 	args := append([]string{"codespace", "ssh", "--codespace", codespaceName, "--"}, wrapBashLoginCommand(chmodCmd)...)
 	_, stderr, err := gh.Exec(args...)
@@ -225,6 +259,24 @@ func prepareCodespaceScripts(ctx context.Context, codespaceName string, hasBrows
 	}
 
 	return nil
+}
+
+func buildStaleSocketCleanupCommand(hasBrowserService, hasNotificationService bool) string {
+	var cleanupCommands []string
+
+	if hasBrowserService {
+		cleanupCommands = append(cleanupCommands, `for socket in /tmp/gh-ado-browser-*.sock; do [ -S "$socket" ] || continue; if ! curl -s --max-time 1 --unix-socket "$socket" "http://localhost/" >/dev/null 2>&1; then rm -f "$socket"; fi; done`)
+	}
+
+	if hasNotificationService {
+		cleanupCommands = append(cleanupCommands, `for socket in /tmp/gh-ado-notification-*.sock; do [ -S "$socket" ] || continue; if ! curl -s --max-time 1 --unix-socket "$socket" "http://localhost/" >/dev/null 2>&1; then rm -f "$socket"; fi; done`)
+	}
+
+	if len(cleanupCommands) == 0 {
+		return ""
+	}
+
+	return "if command -v curl >/dev/null 2>&1; then " + strings.Join(cleanupCommands, " ; ") + "; fi"
 }
 
 // getSessionLogDirectory returns the session-specific log directory

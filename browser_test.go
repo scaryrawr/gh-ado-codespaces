@@ -107,7 +107,7 @@ func TestBuildSSHArgsWithBrowserService(t *testing.T) {
 	defer service.Stop()
 
 	args := CommandLineArgs{}
-	sshArgs := args.BuildSSHArgs("/tmp/test.sock", 8080, service)
+	sshArgs := args.BuildSSHArgs("/tmp/test.sock", 8080, service, nil)
 
 	// Verify browser socket forward is included (socket path -> localhost:port)
 	expectedForward := fmt.Sprintf("%s:localhost:%d", service.SocketPath, service.Port)
@@ -134,7 +134,7 @@ func TestBuildSSHArgsWithBrowserService(t *testing.T) {
 
 func TestBuildSSHArgsWithoutBrowserService(t *testing.T) {
 	args := CommandLineArgs{}
-	sshArgs := args.BuildSSHArgs("/tmp/test.sock", 8080, nil)
+	sshArgs := args.BuildSSHArgs("/tmp/test.sock", 8080, nil, nil)
 
 	// Verify no browser-specific port forwards are included when service is nil
 	for i := 0; i < len(sshArgs)-1; i++ {

@@ -252,6 +252,38 @@ func TestUploadPortMonitorFileSignature(t *testing.T) {
 	})
 }
 
+func TestBuildStaleSocketCleanupCommand(t *testing.T) {
+	t.Run("no services", func(t *testing.T) {
+		cmd := buildStaleSocketCleanupCommand(false, false)
+		if cmd != "" {
+			t.Errorf("Expected empty command, got: %q", cmd)
+		}
+	})
+
+	t.Run("notification only", func(t *testing.T) {
+		cmd := buildStaleSocketCleanupCommand(false, true)
+		if !strings.Contains(cmd, "/tmp/gh-ado-notification-*.sock") {
+			t.Errorf("Expected notification socket cleanup in command: %q", cmd)
+		}
+		if strings.Contains(cmd, "/tmp/gh-ado-browser-*.sock") {
+			t.Errorf("Did not expect browser socket cleanup in command: %q", cmd)
+		}
+	})
+
+	t.Run("both services", func(t *testing.T) {
+		cmd := buildStaleSocketCleanupCommand(true, true)
+		if !strings.Contains(cmd, "/tmp/gh-ado-browser-*.sock") {
+			t.Errorf("Expected browser socket cleanup in command: %q", cmd)
+		}
+		if !strings.Contains(cmd, "/tmp/gh-ado-notification-*.sock") {
+			t.Errorf("Expected notification socket cleanup in command: %q", cmd)
+		}
+		if !strings.Contains(cmd, "command -v curl") {
+			t.Errorf("Expected curl guard in command: %q", cmd)
+		}
+	})
+}
+
 // TestGetLogDirectory verifies log directory path generation
 func TestGetLogDirectory(t *testing.T) {
 	logDir := getLogDirectory()

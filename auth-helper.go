@@ -43,4 +43,3 @@ func uploadAuthHelperFiles(ctx context.Context, codespaceName string) error {
 
 	return nil
 }
-

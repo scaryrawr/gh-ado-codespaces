@@ -322,7 +322,7 @@ func TestBuildSSHArgsWithReverseForwards(t *testing.T) {
 
 	// Build SSH args
 	args := CommandLineArgs{}
-	sshArgs := args.BuildSSHArgs("/tmp/test.sock", 8080, nil)
+	sshArgs := args.BuildSSHArgs("/tmp/test.sock", 8080, nil, nil)
 
 	// Verify the test port is included
 	expectedForward := fmt.Sprintf("%d:localhost:%d", testPort, testPort)
@@ -349,7 +349,7 @@ func TestPrepareCodespaceScripts(t *testing.T) {
 	t.Run("function_signature", func(t *testing.T) {
 		// Verify function exists and has correct signature
 		// by attempting to reference it (compilation check)
-		var f func(context.Context, string, bool) error = prepareCodespaceScripts
+		var f func(context.Context, string, bool, bool) error = prepareCodespaceScripts
 		if f == nil {
 			t.Error("prepareCodespaceScripts function should be defined")
 		}
@@ -387,8 +387,7 @@ func TestSSHArgsWithUserArguments(t *testing.T) {
 	args := CommandLineArgs{
 		RemainingArgs: []string{"-L", "3000:localhost:3000", "echo", "test"},
 	}
-	sshArgs := args.BuildSSHArgs("/tmp/test.sock", 8080, nil)
-
+	sshArgs := args.BuildSSHArgs("/tmp/test.sock", 8080, nil, nil)
 	// Verify user args are at the end
 	if len(sshArgs) < 4 {
 		t.Fatal("Not enough SSH args")
