@@ -15,6 +15,32 @@
 #       source "$HOME/notification-sender.sh"
 #   fi
 
+# Handle "send" subcommand for direct invocation (e.g., fish done plugin)
+# Usage: ~/notification-sender.sh send "title" "message"
+if [ "${1:-}" = "send" ]; then
+    __ns_title="$2"
+    __ns_message="$3"
+
+    if [ -z "$__ns_title" ] || [ -z "$__ns_message" ]; then
+        exit 1
+    fi
+
+    # Require jq and curl
+    if ! command -v jq >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1; then
+        exit 0
+    fi
+
+    # Find the newest notification socket
+    __ns_socket=$(find /tmp -maxdepth 1 -name "gh-ado-notification-*.sock" -type s -exec ls -t {} + 2>/dev/null | head -1)
+    if [ -n "$__ns_socket" ]; then
+        curl -s --max-time 2 --unix-socket "$__ns_socket" -X POST \
+            -H "Content-Type: application/json" \
+            -d "{\"title\":$(printf %s "$__ns_title" | jq -Rs .), \"message\":$(printf %s "$__ns_message" | jq -Rs .)}" \
+            "http://localhost/notify" >/dev/null 2>&1
+    fi
+    exit 0
+fi
+
 # Configuration
 NOTIFICATION_MIN_DURATION="${NOTIFICATION_MIN_DURATION:-5}"  # Minimum command duration in seconds to trigger notification
 
