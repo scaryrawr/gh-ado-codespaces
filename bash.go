@@ -1,6 +1,12 @@
 package main
 
-import "strings"
+import (
+	_ "embed"
+	"strings"
+)
+
+//go:embed xdg-open.sh
+var xdgOpenScript string
 
 func wrapBashLoginCommand(command string) []string {
 	return []string{"bash", "-lc", quoteForShell(command)}
