@@ -125,7 +125,7 @@ The shim replaces the standard `xdg-open` and routes each request based on what 
 | Type | Viewer |
 |---|---|
 | Images (jpg, png, gif, …) | `chafa` |
-| PDFs | `pdftotext` + `less` |
+| PDFs | `pdftotext` + `less`, or `pdfinfo` |
 | Markdown | `glow`, then `bat`, then `$EDITOR` |
 | Everything else | `$EDITOR`, then `vi` |
 
