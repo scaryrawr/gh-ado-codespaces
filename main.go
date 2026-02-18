@@ -245,8 +245,13 @@ func prepareCodespaceScripts(ctx context.Context, codespaceName string, hasBrows
 			fmt.Sprintf("printf %%s %s | base64 -d > ~/notification-sender.sh", notifB64))
 	}
 
+	// xdg-open wrapper (always uploaded; handles its own fallbacks)
+	xdgB64 := base64.StdEncoding.EncodeToString([]byte(xdgOpenScript))
+	cmdParts = append(cmdParts,
+		fmt.Sprintf("printf %%s %s | base64 -d > ~/xdg-open.sh", xdgB64))
+
 	// Make all scripts executable
-	chmodFiles := "~/ado-auth-helper ~/azure-auth-helper ~/port-monitor.sh"
+	chmodFiles := "~/ado-auth-helper ~/azure-auth-helper ~/port-monitor.sh ~/xdg-open.sh"
 	if hasBrowserService {
 		chmodFiles += " ~/browser-opener.sh"
 	}
@@ -260,6 +265,8 @@ func prepareCodespaceScripts(ctx context.Context, codespaceName string, hasBrows
 		"(test -L /usr/local/bin/ado-auth-helper || sudo ln -sf ~/ado-auth-helper /usr/local/bin/ado-auth-helper)")
 	cmdParts = append(cmdParts,
 		"(test -L /usr/local/bin/azure-auth-helper || sudo ln -sf ~/azure-auth-helper /usr/local/bin/azure-auth-helper)")
+	cmdParts = append(cmdParts,
+		"(test -L /usr/local/bin/xdg-open || sudo ln -sf ~/xdg-open.sh /usr/local/bin/xdg-open)")
 
 	// Clean up stale sockets
 	if cleanupCmd := buildStaleSocketCleanupCommand(hasBrowserService, hasNotificationService); cleanupCmd != "" {
@@ -276,6 +283,7 @@ func prepareCodespaceScripts(ctx context.Context, codespaceName string, hasBrows
 
 	// Print success messages
 	fmt.Fprintln(os.Stderr, "ADO and Azure auth helpers uploaded to the codespace and made executable")
+	fmt.Fprintln(os.Stderr, "xdg-open installed at /usr/local/bin/xdg-open")
 	if hasBrowserService {
 		fmt.Fprintf(os.Stderr, "\nBrowser opener available! To enable browser forwarding, add to your shell config:\n")
 		fmt.Fprintf(os.Stderr, "  export BROWSER=\"$HOME/browser-opener.sh\"\n\n")
