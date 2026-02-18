@@ -105,6 +105,35 @@ You can create or update this setting directly from the command line by supplyin
 | [Browser Opening](docs/browser-opening.md) | Opens URLs from your codespace in your local browser |
 | [Notifications](docs/notifications.md) | Desktop notifications when long-running commands finish |
 | [Port Forwarding](docs/port-forwarding.md) | Automatic bi-directional port forwarding (including local AI services) |
+| [xdg-open shim](#xdg-open-shim) | Intelligent file and URL opener for SSH / tmux environments |
+
+### xdg-open shim
+
+`gh ado-codespaces` automatically installs an `xdg-open` shim into the codespace at `/usr/local/bin/xdg-open`. No configuration is needed.
+
+The shim replaces the standard `xdg-open` and routes each request based on what is being opened and how you are connected.
+
+**URLs** (`http://`, `https://`, `mailto:`, `ftp://`) are forwarded through the following chain, stopping at the first success:
+
+1. The gh-ado browser socket (the same service that powers [browser opening](docs/browser-opening.md))
+2. `$BROWSER`, if set
+3. `code --open-url` (VS Code remote)
+4. The real `/usr/bin/xdg-open`
+
+**Files** are opened with a viewer chosen by file type:
+
+| Type | Viewer |
+|---|---|
+| Images (jpg, png, gif, …) | `chafa` |
+| PDFs | `pdftotext` + `less` |
+| Markdown | `glow`, then `bat`, then `$EDITOR` |
+| Everything else | `$EDITOR`, then `vi` |
+
+The viewer is launched in whichever environment is active:
+
+- **Inside tmux** — opens in a new vertical split pane. Editors (vim, nvim, …) open directly; non-interactive viewers (chafa, bat, …) pause with a "press enter" prompt so you can read the output.
+- **SSH without tmux** — runs the viewer inline in the current terminal (blocking).
+- **Not in SSH** — delegates to the real `/usr/bin/xdg-open` or VS Code, falling back to the inline viewer.
 
 ## Testing
 
