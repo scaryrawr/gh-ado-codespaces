@@ -18,11 +18,49 @@ type AzureConfig struct {
 
 // AccountConfig captures per-login configuration.
 type AccountConfig struct {
-	Azure *AzureConfig `json:"azure"`
+	Azure              *AzureConfig         `json:"azure,omitempty"`
+	ReversePortForward []ReversePortForward `json:"reversePortForward,omitempty"`
 }
 
-// AppConfig is keyed by GitHub login ID.
-type AppConfig map[string]AccountConfig
+// AppConfig captures global and per-login configuration.
+type AppConfig struct {
+	ReversePortForward []ReversePortForward     `json:"reversePortForward,omitempty"`
+	Accounts           map[string]AccountConfig `json:"accounts,omitempty"`
+}
+
+// UnmarshalJSON supports both the current structured format and the legacy
+// login-keyed object format.
+func (c *AppConfig) UnmarshalJSON(data []byte) error {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	_, hasTopLevelReverse := raw["reversePortForward"]
+	_, hasAccounts := raw["accounts"]
+	if hasTopLevelReverse || hasAccounts {
+		type appConfigAlias AppConfig
+		var alias appConfigAlias
+		if err := json.Unmarshal(data, &alias); err != nil {
+			return err
+		}
+		*c = AppConfig(alias)
+		if c.Accounts == nil {
+			c.Accounts = make(map[string]AccountConfig)
+		}
+		return nil
+	}
+
+	var legacy map[string]AccountConfig
+	if err := json.Unmarshal(data, &legacy); err != nil {
+		return err
+	}
+	c.Accounts = legacy
+	if c.Accounts == nil {
+		c.Accounts = make(map[string]AccountConfig)
+	}
+	return nil
+}
 
 // getConfigFilePath resolves the configuration file path.
 func getConfigFilePath() (string, error) {
@@ -42,7 +80,7 @@ func getConfigFilePath() (string, error) {
 func LoadAppConfig() (AppConfig, error) {
 	path, err := getConfigFilePath()
 	if err != nil {
-		return nil, err
+		return AppConfig{}, err
 	}
 
 	data, err := os.ReadFile(path)
@@ -51,7 +89,7 @@ func LoadAppConfig() (AppConfig, error) {
 	}
 
 	if err != nil {
-		return nil, fmt.Errorf("read config file %s: %w", path, err)
+		return AppConfig{}, fmt.Errorf("read config file %s: %w", path, err)
 	}
 
 	if len(strings.TrimSpace(string(data))) == 0 {
@@ -60,7 +98,10 @@ func LoadAppConfig() (AppConfig, error) {
 
 	var cfg AppConfig
 	if err := json.Unmarshal(data, &cfg); err != nil {
-		return nil, fmt.Errorf("parse config file %s: %w", path, err)
+		return AppConfig{}, fmt.Errorf("parse config file %s: %w", path, err)
+	}
+	if cfg.Accounts == nil {
+		cfg.Accounts = make(map[string]AccountConfig)
 	}
 
 	return cfg, nil
@@ -68,11 +109,7 @@ func LoadAppConfig() (AppConfig, error) {
 
 // AzureSubscriptionForLogin returns the Azure subscription override for a GitHub login, if present.
 func (c AppConfig) AzureSubscriptionForLogin(login string) (string, bool) {
-	if c == nil {
-		return "", false
-	}
-
-	acct, ok := c[login]
+	acct, ok := c.Accounts[login]
 	if !ok || acct.Azure == nil {
 		return "", false
 	}
@@ -86,9 +123,12 @@ func (c AppConfig) AzureSubscriptionForLogin(login string) (string, bool) {
 }
 
 // SetAzureSubscriptionForLogin sets (or clears if empty) the Azure subscription for a given login.
-func (c AppConfig) SetAzureSubscriptionForLogin(login, subscription string) {
+func (c *AppConfig) SetAzureSubscriptionForLogin(login, subscription string) {
 	if c == nil {
 		return
+	}
+	if c.Accounts == nil {
+		c.Accounts = make(map[string]AccountConfig)
 	}
 	login = strings.TrimSpace(login)
 	if login == "" {
@@ -97,23 +137,33 @@ func (c AppConfig) SetAzureSubscriptionForLogin(login, subscription string) {
 	sub := strings.TrimSpace(subscription)
 	if sub == "" {
 		// Clear existing if present
-		if acct, ok := c[login]; ok {
+		if acct, ok := c.Accounts[login]; ok {
 			acct.Azure = nil
 			// If AccountConfig is now empty, remove the login entry entirely
-			if acct.Azure == nil {
-				delete(c, login)
+			if acct.Azure == nil && len(acct.ReversePortForward) == 0 {
+				delete(c.Accounts, login)
 			} else {
-				c[login] = acct
+				c.Accounts[login] = acct
 			}
 		}
 		return
 	}
-	acct := c[login] // zero value if not exists
+	acct := c.Accounts[login] // zero value if not exists
 	if acct.Azure == nil {
 		acct.Azure = &AzureConfig{}
 	}
 	acct.Azure.Subscription = sub
-	c[login] = acct
+	c.Accounts[login] = acct
+}
+
+// ReversePortForwardsForLogin returns defaults merged with top-level and per-login overrides.
+func (c AppConfig) ReversePortForwardsForLogin(login string) []ReversePortForward {
+	accountForwards := []ReversePortForward(nil)
+	if acct, ok := c.Accounts[login]; ok {
+		accountForwards = acct.ReversePortForward
+	}
+
+	return MergeReversePortForwards(WellKnownPorts, c.ReversePortForward, accountForwards)
 }
 
 // SaveAppConfig persists the configuration to disk, creating directories as needed.
