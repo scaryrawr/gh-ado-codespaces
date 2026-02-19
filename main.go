@@ -43,22 +43,49 @@ func main() {
 		return
 	}
 
+	cfg, cfgErr := LoadAppConfig()
+	if cfgErr != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to load config: %v\n", cfgErr)
+		cfg = AppConfig{}
+	}
+
+	// Only resolve the current GitHub login when per-account reversePortForward
+	// settings or a per-login Azure subscription override are actually needed,
+	// to avoid an unnecessary `gh api user` network call on every run.
+	needLogin := args.AzureSubscriptionId != ""
+	if !needLogin {
+		for _, acct := range cfg.Accounts {
+			if len(acct.ReversePortForward) > 0 {
+				needLogin = true
+				break
+			}
+		}
+	}
+	var login string
+	var loginErr error
+	if needLogin {
+		login, loginErr = currentGitHubLogin()
+		if loginErr != nil {
+			fmt.Fprintf(os.Stderr, "Warning: unable to determine active GitHub login for config overrides: %v\n", loginErr)
+		}
+	}
+
+	if needLogin && loginErr == nil {
+		WellKnownPorts = cfg.ReversePortForwardsForLogin(login)
+	} else {
+		WellKnownPorts = MergeReversePortForwards(WellKnownPorts, cfg.ReversePortForward)
+	}
+
 	// Persist Azure subscription ID override early so subsequent auth setup sees it.
 	if args.AzureSubscriptionId != "" {
-		login, err := currentGitHubLogin()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: unable to determine GitHub login to store Azure subscription: %v\n", err)
+		if loginErr != nil {
+			fmt.Fprintf(os.Stderr, "Warning: unable to determine GitHub login to store Azure subscription: %v\n", loginErr)
 		} else {
-			cfg, err := LoadAppConfig()
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: failed to load config for persisting Azure subscription: %v\n", err)
+			cfg.SetAzureSubscriptionForLogin(login, args.AzureSubscriptionId)
+			if err := SaveAppConfig(cfg); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to save Azure subscription to config: %v\n", err)
 			} else {
-				cfg.SetAzureSubscriptionForLogin(login, args.AzureSubscriptionId)
-				if err := SaveAppConfig(cfg); err != nil {
-					fmt.Fprintf(os.Stderr, "Warning: failed to save Azure subscription to config: %v\n", err)
-				} else {
-					fmt.Fprintf(os.Stderr, "Stored Azure subscription ID for login '%s' in config.\n", login)
-				}
+				fmt.Fprintf(os.Stderr, "Stored Azure subscription ID for login '%s' in config.\n", login)
 			}
 		}
 	}

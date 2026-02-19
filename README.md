@@ -80,20 +80,30 @@ $OS_CONFIG_DIR/gh-ado-codespaces/config.json
 
 Set the `GH_ADO_CODESPACES_CONFIG` environment variable to point at a different file if you prefer a custom location.
 
-The configuration file is a JSON object keyed by GitHub login IDs returned by `gh auth switch`. Each account can provide Azure-specific overrides, such as the subscription to use when acquiring tokens via the Azure CLI:
+The configuration file supports global settings plus per-account overrides keyed by your authenticated GitHub username (the `.login` value returned by `gh api user --jq .login`):
 
 ```json
 {
-  "login-id-1": {},
-  "login-id-2": {
-    "azure": {
-      "subscription": "00000000-0000-0000-0000-000000000000"
+  "reversePortForward": [
+    { "port": 8081, "description": "Custom service", "enabled": true }
+  ],
+  "accounts": {
+    "login-id-1": {},
+    "login-id-2": {
+      "azure": {
+        "subscription": "00000000-0000-0000-0000-000000000000"
+      },
+      "reversePortForward": [
+        { "port": 9090, "description": "Account-only service", "enabled": true }
+      ]
     }
   }
 }
 ```
 
 If a subscription is set, the extension requests tokens from the Azure CLI using that subscription. When no override is present, the Azure CLI's default subscription continues to be used.
+
+`reversePortForward` entries are merged in this order: built-in defaults, top-level config, then per-account config. Matching ports are overridden by later entries, so you can disable or update defaults per account.
 
 You can create or update this setting directly from the command line by supplying the `--azure-subscription-id` flag once. The value will be persisted for the active GitHub login so future invocations do not need the flag unless you want to change or clear it. To clear the stored value, edit the config file and remove (or empty) the `subscription` field for your login.
 

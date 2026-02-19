@@ -22,6 +22,8 @@ The extension automatically shares local AI services to your codespace:
 3. Your codespace can then access these services via `localhost:1234` or `localhost:11434`
 4. This enables you to use your local AI models and services from within your codespace
 
+You can add or override reverse-forwarded ports in `config.json` using `reversePortForward` at the top level (all accounts) or within `accounts.<login>.reversePortForward` for account-specific overrides.
+
 This is particularly useful for:
 - Running Ollama models on your local machine while coding in a codespace
 - Using LM Studio's local inference server from your codespace

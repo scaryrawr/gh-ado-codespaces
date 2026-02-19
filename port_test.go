@@ -108,6 +108,37 @@ func TestBuildReverseForwardArgs(t *testing.T) {
 	}
 }
 
+func TestMergeReversePortForwards(t *testing.T) {
+	base := []ReversePortForward{
+		{Port: 1234, Description: "LM Studio", Enabled: true},
+		{Port: 11434, Description: "Ollama", Enabled: true},
+	}
+	topLevel := []ReversePortForward{
+		{Port: 1234, Description: "Override LM", Enabled: false},
+		{Port: 8081, Description: "Top level", Enabled: true},
+	}
+	account := []ReversePortForward{
+		{Port: 8081, Description: "Account override", Enabled: false},
+		{Port: 9090, Description: "Account extra", Enabled: true},
+	}
+
+	merged := MergeReversePortForwards(base, topLevel, account)
+	byPort := map[int]ReversePortForward{}
+	for _, forward := range merged {
+		byPort[forward.Port] = forward
+	}
+
+	if got, ok := byPort[1234]; !ok || got.Enabled {
+		t.Fatalf("expected 1234 to be disabled by override, got %+v", got)
+	}
+	if got, ok := byPort[8081]; !ok || got.Enabled {
+		t.Fatalf("expected account override for 8081, got %+v", got)
+	}
+	if _, ok := byPort[9090]; !ok {
+		t.Fatal("expected account port 9090 to be present")
+	}
+}
+
 func TestWellKnownPorts(t *testing.T) {
 	// Verify well-known ports are properly configured
 	if len(WellKnownPorts) == 0 {

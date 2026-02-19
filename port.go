@@ -8,10 +8,10 @@ import (
 
 // ReversePortForward represents a reverse port forward configuration
 type ReversePortForward struct {
-	Port          int
-	Description   string
-	Enabled       bool
-	AlwaysForward bool // If true, forward even when port is not bound locally
+	Port          int    `json:"port"`
+	Description   string `json:"description"`
+	Enabled       bool   `json:"enabled"`
+	AlwaysForward bool   `json:"alwaysForward"` // If true, forward even when port is not bound locally
 }
 
 // WellKnownPorts defines commonly used service ports that should be forwarded
@@ -19,6 +19,34 @@ var WellKnownPorts = []ReversePortForward{
 	{Port: 1234, Description: "LM Studio", Enabled: true},
 	{Port: 9222, Description: "Chrome DevTools", Enabled: true},
 	{Port: 11434, Description: "Ollama", Enabled: true},
+}
+
+// MergeReversePortForwards merges default and override port lists by port number.
+// Later lists override earlier entries for the same port. Entries with invalid
+// port numbers (≤0 or >65535) are skipped with a warning.
+func MergeReversePortForwards(lists ...[]ReversePortForward) []ReversePortForward {
+	mergedByPort := make(map[int]ReversePortForward)
+	var order []int
+
+	for _, forwards := range lists {
+		for _, forward := range forwards {
+			if forward.Port <= 0 || forward.Port > 65535 {
+				fmt.Fprintf(os.Stderr, "Warning: skipping reverse port forward with invalid port %d (%q)\n", forward.Port, forward.Description)
+				continue
+			}
+			if _, exists := mergedByPort[forward.Port]; !exists {
+				order = append(order, forward.Port)
+			}
+			mergedByPort[forward.Port] = forward
+		}
+	}
+
+	merged := make([]ReversePortForward, 0, len(order))
+	for _, port := range order {
+		merged = append(merged, mergedByPort[port])
+	}
+
+	return merged
 }
 
 // isPortBound checks if a port is bound on the local machine
