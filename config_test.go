@@ -157,6 +157,7 @@ func TestLoadAppConfig(t *testing.T) {
 		name        string
 		configPath  string
 		configData  string
+		createFile  bool // create the file even when configData is empty
 		expectError bool
 		expected    AppConfig
 	}{
@@ -169,6 +170,7 @@ func TestLoadAppConfig(t *testing.T) {
 			name:       "empty file",
 			configPath: filepath.Join(tempDir, "empty.json"),
 			configData: "",
+			createFile: true,
 			expected:   AppConfig{},
 		},
 		{
@@ -222,7 +224,7 @@ func TestLoadAppConfig(t *testing.T) {
 			originalEnv := os.Getenv(configEnvVar)
 			defer os.Setenv(configEnvVar, originalEnv)
 
-			if tt.configData != "" {
+			if tt.configData != "" || tt.createFile {
 				if err := os.WriteFile(tt.configPath, []byte(tt.configData), 0o644); err != nil {
 					t.Fatalf("Failed to create test config file: %v", err)
 				}

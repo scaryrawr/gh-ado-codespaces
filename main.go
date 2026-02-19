@@ -49,10 +49,18 @@ func main() {
 		cfg = AppConfig{}
 	}
 
-	// Only resolve the current GitHub login when per-account settings or a
-	// per-login Azure subscription override are actually needed, to avoid an
-	// unnecessary `gh api user` network call on every run.
-	needLogin := args.AzureSubscriptionId != "" || len(cfg.Accounts) > 0
+	// Only resolve the current GitHub login when per-account reversePortForward
+	// settings or a per-login Azure subscription override are actually needed,
+	// to avoid an unnecessary `gh api user` network call on every run.
+	needLogin := args.AzureSubscriptionId != ""
+	if !needLogin {
+		for _, acct := range cfg.Accounts {
+			if len(acct.ReversePortForward) > 0 {
+				needLogin = true
+				break
+			}
+		}
+	}
 	var login string
 	var loginErr error
 	if needLogin {
