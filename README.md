@@ -80,7 +80,7 @@ $OS_CONFIG_DIR/gh-ado-codespaces/config.json
 
 Set the `GH_ADO_CODESPACES_CONFIG` environment variable to point at a different file if you prefer a custom location.
 
-The configuration file supports global settings plus per-account overrides keyed by GitHub login IDs returned by `gh auth switch`:
+The configuration file supports global settings plus per-account overrides keyed by your authenticated GitHub username (the `.login` value returned by `gh api user --jq .login`):
 
 ```json
 {

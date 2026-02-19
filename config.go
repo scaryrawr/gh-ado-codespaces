@@ -36,9 +36,29 @@ func (c *AppConfig) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	_, hasTopLevelReverse := raw["reversePortForward"]
-	_, hasAccounts := raw["accounts"]
-	if hasTopLevelReverse || hasAccounts {
+	// Detect structured format: all top-level keys must be known structured-format
+	// keys. A legacy config uses GitHub login names as top-level keys, so any
+	// unrecognised key indicates legacy format.
+	knownStructuredKeys := map[string]bool{"accounts": true, "reversePortForward": true}
+	isStructured := len(raw) > 0
+	for key := range raw {
+		if !knownStructuredKeys[key] {
+			isStructured = false
+			break
+		}
+	}
+	// Edge case: if the only top-level key is "accounts", check whether its value
+	// is a direct AccountConfig (indicating the login name is literally "accounts")
+	// rather than the expected map[string]AccountConfig.
+	if isStructured {
+		if accountsVal, ok := raw["accounts"]; ok && len(raw) == 1 {
+			var acct AccountConfig
+			if err := json.Unmarshal(accountsVal, &acct); err == nil && (acct.Azure != nil || len(acct.ReversePortForward) > 0) {
+				isStructured = false
+			}
+		}
+	}
+	if isStructured {
 		type appConfigAlias AppConfig
 		var alias appConfigAlias
 		if err := json.Unmarshal(data, &alias); err != nil {

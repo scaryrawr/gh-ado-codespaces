@@ -22,13 +22,18 @@ var WellKnownPorts = []ReversePortForward{
 }
 
 // MergeReversePortForwards merges default and override port lists by port number.
-// Later lists override earlier entries for the same port.
+// Later lists override earlier entries for the same port. Entries with invalid
+// port numbers (≤0 or >65535) are skipped with a warning.
 func MergeReversePortForwards(lists ...[]ReversePortForward) []ReversePortForward {
 	mergedByPort := make(map[int]ReversePortForward)
 	var order []int
 
 	for _, forwards := range lists {
 		for _, forward := range forwards {
+			if forward.Port <= 0 || forward.Port > 65535 {
+				fmt.Fprintf(os.Stderr, "Warning: skipping reverse port forward with invalid port %d (%q)\n", forward.Port, forward.Description)
+				continue
+			}
 			if _, exists := mergedByPort[forward.Port]; !exists {
 				order = append(order, forward.Port)
 			}

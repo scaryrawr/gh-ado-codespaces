@@ -166,6 +166,18 @@ func TestLoadAppConfig(t *testing.T) {
 			expected:   AppConfig{},
 		},
 		{
+			name:       "empty file",
+			configPath: filepath.Join(tempDir, "empty.json"),
+			configData: "",
+			expected:   AppConfig{},
+		},
+		{
+			name:       "whitespace only file",
+			configPath: filepath.Join(tempDir, "whitespace.json"),
+			configData: "   \n\t  ",
+			expected:   AppConfig{},
+		},
+		{
 			name:       "valid structured config",
 			configPath: filepath.Join(tempDir, "structured.json"),
 			configData: `{

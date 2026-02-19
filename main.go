@@ -49,12 +49,23 @@ func main() {
 		cfg = AppConfig{}
 	}
 
-	login, loginErr := currentGitHubLogin()
-	if loginErr != nil {
-		fmt.Fprintf(os.Stderr, "Warning: unable to determine active GitHub login for config overrides: %v\n", loginErr)
-		WellKnownPorts = MergeReversePortForwards(WellKnownPorts, cfg.ReversePortForward)
-	} else {
+	// Only resolve the current GitHub login when per-account settings or a
+	// per-login Azure subscription override are actually needed, to avoid an
+	// unnecessary `gh api user` network call on every run.
+	needLogin := args.AzureSubscriptionId != "" || len(cfg.Accounts) > 0
+	var login string
+	var loginErr error
+	if needLogin {
+		login, loginErr = currentGitHubLogin()
+		if loginErr != nil {
+			fmt.Fprintf(os.Stderr, "Warning: unable to determine active GitHub login for config overrides: %v\n", loginErr)
+		}
+	}
+
+	if needLogin && loginErr == nil {
 		WellKnownPorts = cfg.ReversePortForwardsForLogin(login)
+	} else {
+		WellKnownPorts = MergeReversePortForwards(WellKnownPorts, cfg.ReversePortForward)
 	}
 
 	// Persist Azure subscription ID override early so subsequent auth setup sees it.
