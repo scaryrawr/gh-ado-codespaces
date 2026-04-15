@@ -5,8 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"image/png"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -318,5 +320,67 @@ func TestNotificationTruncation(t *testing.T) {
 	// but we're mainly testing that the truncation doesn't cause errors
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusInternalServerError {
 		t.Errorf("Unexpected status code: %d", resp.StatusCode)
+	}
+}
+
+func TestNotificationIconEmbedded(t *testing.T) {
+	if len(notificationIcon) == 0 {
+		t.Fatal("Expected embedded notification icon to be non-empty")
+	}
+
+	img, err := png.Decode(bytes.NewReader(notificationIcon))
+	if err != nil {
+		t.Fatalf("Expected embedded notification icon to decode as PNG: %v", err)
+	}
+
+	bounds := img.Bounds()
+	if bounds.Dx() == 0 || bounds.Dy() == 0 {
+		t.Fatalf("Expected embedded notification icon to have non-zero dimensions, got %v", bounds)
+	}
+
+	_, _, _, alpha := img.At(bounds.Min.X, bounds.Min.Y).RGBA()
+	if alpha != 0 {
+		t.Fatalf("Expected embedded notification icon corner to be transparent, got alpha=%d", alpha>>8)
+	}
+}
+
+func TestNotificationHandlerUsesEmbeddedIcon(t *testing.T) {
+	originalNotify := desktopNotify
+	t.Cleanup(func() {
+		desktopNotify = originalNotify
+	})
+
+	var gotTitle, gotMessage string
+	var gotIcon any
+	desktopNotify = func(title, message string, icon any) error {
+		gotTitle = title
+		gotMessage = message
+		gotIcon = icon
+		return nil
+	}
+
+	service := &NotificationService{}
+	reqBody := `{"title":"Test Title","message":"Test Message"}`
+	req := httptest.NewRequest(http.MethodPost, "/notify", strings.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+
+	service.handleNotification(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("Expected status %d, got %d", http.StatusOK, recorder.Code)
+	}
+
+	if gotTitle != "Test Title" || gotMessage != "Test Message" {
+		t.Fatalf("Unexpected notification payload: title=%q message=%q", gotTitle, gotMessage)
+	}
+
+	iconBytes, ok := gotIcon.([]byte)
+	if !ok {
+		t.Fatalf("Expected embedded icon bytes, got %T", gotIcon)
+	}
+
+	if !bytes.Equal(iconBytes, notificationIcon) {
+		t.Fatal("Expected handler to pass embedded notification icon bytes")
 	}
 }

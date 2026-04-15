@@ -19,6 +19,11 @@ import (
 //go:embed notification-sender.sh
 var notificationSenderScript string
 
+//go:embed notification-icon.png
+var notificationIcon []byte
+
+var desktopNotify = beeep.Notify
+
 // NotificationRequest represents a notification request from the codespace
 type NotificationRequest struct {
 	Title   string `json:"title"`
@@ -144,8 +149,9 @@ func (ns *NotificationService) handleNotification(w http.ResponseWriter, r *http
 
 	logDebug("Sending notification: title=%s, message=%s", req.Title, req.Message)
 
-	// Send the notification using beeep
-	if err := beeep.Notify(req.Title, req.Message, ""); err != nil {
+	// Send the notification using beeep with an embedded icon so supported
+	// platforms avoid the default host icon when possible.
+	if err := desktopNotify(req.Title, req.Message, notificationIcon); err != nil {
 		logDebug("Error sending notification: %v", err)
 		http.Error(w, "Failed to send notification", http.StatusInternalServerError)
 		return
