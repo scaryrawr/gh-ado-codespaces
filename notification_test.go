@@ -344,6 +344,32 @@ func TestNotificationIconEmbedded(t *testing.T) {
 	}
 }
 
+func TestNotificationSenderScriptUsesSharedCompletionHelper(t *testing.T) {
+	if !strings.Contains(notificationSenderScript, "__notification_send_command_completion()") {
+		t.Fatal("Expected notification sender script to define shared completion helper")
+	}
+
+	if got := strings.Count(notificationSenderScript, "local cmd_status=\"completed\""); got != 1 {
+		t.Fatalf("Expected command status logic to be defined once, got %d", got)
+	}
+
+	if got := strings.Count(notificationSenderScript, "__send_notification \"Command $cmd_status\""); got != 1 {
+		t.Fatalf("Expected command notification send logic to be defined once, got %d", got)
+	}
+
+	if got := strings.Count(notificationSenderScript, "__notification_send_command_completion"); got != 3 {
+		t.Fatalf("Expected shared completion helper definition plus bash and zsh calls, got %d occurrences", got)
+	}
+
+	if !strings.Contains(notificationSenderScript, "HISTTIMEFORMAT= history 1") {
+		t.Fatal("Expected bash hook to preserve bash command lookup")
+	}
+
+	if !strings.Contains(notificationSenderScript, "fc -ln -1") {
+		t.Fatal("Expected zsh hook to preserve zsh command lookup")
+	}
+}
+
 func TestNotificationHandlerUsesEmbeddedIcon(t *testing.T) {
 	originalNotify := desktopNotify
 	t.Cleanup(func() {

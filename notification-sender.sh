@@ -132,6 +132,26 @@ __send_notification() {
     return 1
 }
 
+# Function to send a command completion notification when duration threshold is met
+__notification_send_command_completion() {
+    local exit_code="$1"
+    local end_time=$(date +%s)
+    local duration=$((end_time - __notification_cmd_start_time))
+
+    # Only notify if command took longer than minimum duration
+    if [ $__notification_cmd_start_time -ne 0 ] && [ $duration -ge $NOTIFICATION_MIN_DURATION ]; then
+        local cmd_status="completed"
+        if [ $exit_code -ne 0 ]; then
+            cmd_status="failed"
+        fi
+
+        local last_cmd=$(__notification_last_command)
+        __send_notification "Command $cmd_status" "$last_cmd (${duration}s, exit: $exit_code)"
+    fi
+
+    __notification_cmd_start_time=0
+}
+
 # Bash-specific hooks
 if [ -n "$BASH_VERSION" ]; then
     # Track if we're in a command execution to avoid nested timing
@@ -150,30 +170,18 @@ if [ -n "$BASH_VERSION" ]; then
     # Function called after each command
     __notification_precmd() {
         local exit_code=$?
-        
+
         # Only process if we were actually timing a command
         if [ $__notification_in_command -eq 0 ]; then
             return
         fi
-        
+
         __notification_in_command=0
-        local end_time=$(date +%s)
-        local duration=$((end_time - __notification_cmd_start_time))
-        
-        # Only notify if command took longer than minimum duration
-        if [ $duration -ge $NOTIFICATION_MIN_DURATION ] && [ $__notification_cmd_start_time -ne 0 ]; then
-            local cmd_status="completed"
-            if [ $exit_code -ne 0 ]; then
-                cmd_status="failed"
-            fi
-            
-            local last_cmd=$(HISTTIMEFORMAT= history 1 | sed 's/^[ ]*[0-9]*[ ]*//')
-            
-            # Send notification
-            __send_notification "Command $cmd_status" "$last_cmd (${duration}s, exit: $exit_code)"
-        fi
-        
-        __notification_cmd_start_time=0
+        __notification_send_command_completion "$exit_code"
+    }
+
+    __notification_last_command() {
+        HISTTIMEFORMAT= history 1 | sed 's/^[ ]*[0-9]*[ ]*//'
     }
     
     # Set up bash hooks using DEBUG trap and PROMPT_COMMAND
@@ -197,24 +205,13 @@ if [ -n "$ZSH_VERSION" ]; then
     # Function called after each command
     __notification_precmd() {
         local exit_code=$?
-        local end_time=$(date +%s)
-        local duration=$((end_time - __notification_cmd_start_time))
-        
-        # Only notify if command took longer than minimum duration
-        if [ $duration -ge $NOTIFICATION_MIN_DURATION ] && [ $__notification_cmd_start_time -ne 0 ]; then
-            local cmd_status="completed"
-            if [ $exit_code -ne 0 ]; then
-                cmd_status="failed"
-            fi
-            
-            # In zsh, the last command is available in $history[1] or we can use fc
-            local last_cmd=$(fc -ln -1 2>/dev/null || echo "unknown command")
-            
-            # Send notification
-            __send_notification "Command $cmd_status" "$last_cmd (${duration}s, exit: $exit_code)"
-        fi
-        
-        __notification_cmd_start_time=0
+
+        __notification_send_command_completion "$exit_code"
+    }
+
+    __notification_last_command() {
+        # In zsh, the last command is available in $history[1] or we can use fc
+        fc -ln -1 2>/dev/null || echo "unknown command"
     }
     
     # Set up zsh hooks
