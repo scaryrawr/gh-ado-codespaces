@@ -1,0 +1,7 @@
+# Normalize line endings across platforms.
+# The *.sh / *.py shims are pulled into the binary via //go:embed and executed in the
+# Linux codespace, so they MUST stay LF even on Windows checkouts (a CRLF shebang like
+# '#!/usr/bin/env bash\r' fails to exec). Pinning eol=lf also keeps gofmt clean on Windows.
+* text=auto eol=lf
+*.png binary
+*.exe binary
