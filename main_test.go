@@ -284,6 +284,56 @@ func TestBuildStaleSocketCleanupCommand(t *testing.T) {
 	})
 }
 
+func TestBuildCodespaceBashStdinArgs(t *testing.T) {
+	args := buildCodespaceBashStdinArgs("test-codespace")
+	joinedArgs := strings.Join(args, " ")
+
+	expected := []string{
+		"codespace",
+		"ssh",
+		"--codespace",
+		"test-codespace",
+		"--",
+		"-T",
+		"bash",
+		"-lc",
+		"'bash -s'",
+	}
+
+	if strings.Join(expected, " ") != joinedArgs {
+		t.Fatalf("buildCodespaceBashStdinArgs() = %q, want %q", joinedArgs, strings.Join(expected, " "))
+	}
+
+	if strings.Contains(joinedArgs, "ado-auth-helper") || strings.Contains(joinedArgs, "base64") {
+		t.Fatalf("codespace setup payload should be sent over stdin, not argv: %q", joinedArgs)
+	}
+}
+
+func TestBuildCodespacePreparationScript(t *testing.T) {
+	script := buildCodespacePreparationScript(true, true)
+
+	expectedSnippets := []string{
+		"set -e\n",
+		"> ~/ado-auth-helper && cp ~/ado-auth-helper ~/azure-auth-helper",
+		"> ~/port-monitor.sh",
+		"> ~/browser-opener.sh",
+		"> ~/notification-sender.sh",
+		"> ~/xdg-open.sh",
+		"chmod +x ~/ado-auth-helper ~/azure-auth-helper ~/port-monitor.sh ~/xdg-open.sh ~/browser-opener.sh ~/notification-sender.sh",
+		"sudo ln -sf ~/ado-auth-helper /usr/local/bin/ado-auth-helper",
+		"sudo ln -sf ~/azure-auth-helper /usr/local/bin/azure-auth-helper",
+		"sudo ln -sf ~/xdg-open.sh /usr/local/bin/xdg-open",
+		"/tmp/gh-ado-browser-*.sock",
+		"/tmp/gh-ado-notification-*.sock",
+	}
+
+	for _, snippet := range expectedSnippets {
+		if !strings.Contains(script, snippet) {
+			t.Errorf("Expected setup script to contain %q", snippet)
+		}
+	}
+}
+
 // TestGetLogDirectory verifies log directory path generation
 func TestGetLogDirectory(t *testing.T) {
 	logDir := getLogDirectory()

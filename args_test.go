@@ -129,7 +129,7 @@ func TestCommandLineArgs_BuildSSHArgs(t *testing.T) {
 
 			// Check that the socket forward is present
 			foundSocketForward := false
-			expectedSocketForward := tt.socketPath + ":localhost:" + fmt.Sprint(tt.port)
+			expectedSocketForward := tt.socketPath + ":" + localServiceHost + ":" + fmt.Sprint(tt.port)
 			for i := 0; i < len(result)-1; i++ {
 				if result[i] == "-R" && result[i+1] == expectedSocketForward {
 					foundSocketForward = true

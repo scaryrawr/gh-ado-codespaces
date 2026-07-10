@@ -1,10 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"fmt"
+	"io"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"sort"
@@ -242,10 +245,26 @@ func sanitizeForFilename(name string) string {
 	return result
 }
 
-// prepareCodespaceScripts writes all helper scripts to the codespace in a
-// single SSH call using base64-encoded content, then makes them executable
-// and creates symlinks. This avoids multiple expensive relay connections.
+// prepareCodespaceScripts writes all helper scripts to the codespace in a single SSH session.
 func prepareCodespaceScripts(ctx context.Context, codespaceName string, hasBrowserService, hasNotificationService bool) error {
+	script := buildCodespacePreparationScript(hasBrowserService, hasNotificationService)
+	stderr, err := runCodespaceBashScript(ctx, codespaceName, script)
+	if err != nil {
+		return fmt.Errorf("error preparing scripts: %w\nStderr: %s", err, stderr)
+	}
+
+	fmt.Fprintln(os.Stderr, "ADO and Azure auth helpers uploaded to the codespace and made executable")
+	fmt.Fprintln(os.Stderr, "xdg-open installed at /usr/local/bin/xdg-open")
+	if hasBrowserService {
+		fmt.Fprintf(os.Stderr, "\nBrowser opener available! To enable browser forwarding, add to your shell config:\n")
+		fmt.Fprintf(os.Stderr, "  export BROWSER=\"$HOME/browser-opener.sh\"\n\n")
+	}
+
+	return nil
+}
+
+// buildCodespacePreparationScript returns the remote setup script sent over stdin.
+func buildCodespacePreparationScript(hasBrowserService, hasNotificationService bool) string {
 	var cmdParts []string
 
 	// Base64-encode and write auth helper to two destinations
@@ -300,23 +319,36 @@ func prepareCodespaceScripts(ctx context.Context, codespaceName string, hasBrows
 		cmdParts = append(cmdParts, cleanupCmd)
 	}
 
-	fullCmd := strings.Join(cmdParts, " && ")
+	return "set -e\n" + strings.Join(cmdParts, "\n") + "\n"
+}
 
-	args := append([]string{"codespace", "ssh", "--codespace", codespaceName, "--"}, wrapBashLoginCommand(fullCmd)...)
-	_, stderr, err := gh.Exec(args...)
+// buildCodespaceBashStdinArgs returns a short gh invocation that reads setup commands from stdin.
+func buildCodespaceBashStdinArgs(codespaceName string) []string {
+	return append(
+		[]string{"codespace", "ssh", "--codespace", codespaceName, "--", "-T"},
+		wrapBashLoginCommand("bash -s")...,
+	)
+}
+
+// runCodespaceBashScript executes script in the codespace without placing the script in argv.
+func runCodespaceBashScript(ctx context.Context, codespaceName, script string) (string, error) {
+	ghExe, err := gh.Path()
 	if err != nil {
-		return fmt.Errorf("error preparing scripts: %w\nStderr: %s", err, stderr.String())
+		return "", err
 	}
 
-	// Print success messages
-	fmt.Fprintln(os.Stderr, "ADO and Azure auth helpers uploaded to the codespace and made executable")
-	fmt.Fprintln(os.Stderr, "xdg-open installed at /usr/local/bin/xdg-open")
-	if hasBrowserService {
-		fmt.Fprintf(os.Stderr, "\nBrowser opener available! To enable browser forwarding, add to your shell config:\n")
-		fmt.Fprintf(os.Stderr, "  export BROWSER=\"$HOME/browser-opener.sh\"\n\n")
+	cmd := exec.CommandContext(ctx, ghExe, buildCodespaceBashStdinArgs(codespaceName)...)
+	cmd.Stdin = strings.NewReader(script)
+	cmd.Stdout = io.Discard
+
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return stderr.String(), fmt.Errorf("gh execution failed: %w", err)
 	}
 
-	return nil
+	return stderr.String(), nil
 }
 
 func buildStaleSocketCleanupCommand(hasBrowserService, hasNotificationService bool) string {

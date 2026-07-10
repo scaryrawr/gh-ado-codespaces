@@ -121,8 +121,8 @@ func TestBuildSSHArgsWithNotificationService(t *testing.T) {
 	args := CommandLineArgs{}
 	sshArgs := args.BuildSSHArgs("/tmp/test.sock", 8080, nil, service)
 
-	// Verify notification socket forward is included (socket path -> localhost:port)
-	expectedForward := fmt.Sprintf("%s:localhost:%d", service.SocketPath, service.Port)
+	// Verify notification socket forward is included.
+	expectedForward := fmt.Sprintf("%s:%s:%d", service.SocketPath, localServiceHost, service.Port)
 	foundForward := false
 	for i := 0; i < len(sshArgs)-1; i++ {
 		if sshArgs[i] == "-R" && sshArgs[i+1] == expectedForward {
