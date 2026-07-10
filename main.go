@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -248,9 +247,9 @@ func sanitizeForFilename(name string) string {
 // prepareCodespaceScripts writes all helper scripts to the codespace in a single SSH session.
 func prepareCodespaceScripts(ctx context.Context, codespaceName string, hasBrowserService, hasNotificationService bool) error {
 	script := buildCodespacePreparationScript(hasBrowserService, hasNotificationService)
-	stderr, err := runCodespaceBashScript(ctx, codespaceName, script)
+	commandOutput, err := runCodespaceBashScript(ctx, codespaceName, script)
 	if err != nil {
-		return fmt.Errorf("error preparing scripts: %w\nStderr: %s", err, stderr)
+		return fmt.Errorf("error preparing scripts: %w\nCommand output: %s", err, commandOutput)
 	}
 
 	// Print success messages
@@ -335,21 +334,21 @@ func buildCodespaceBashStdinArgs(codespaceName string) []string {
 func runCodespaceBashScript(ctx context.Context, codespaceName, script string) (string, error) {
 	ghExe, err := gh.Path()
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to locate gh executable: %w", err)
 	}
 
 	cmd := exec.CommandContext(ctx, ghExe, buildCodespaceBashStdinArgs(codespaceName)...)
 	cmd.Stdin = strings.NewReader(script)
-	cmd.Stdout = io.Discard
 
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
+	var commandOutput bytes.Buffer
+	cmd.Stdout = &commandOutput
+	cmd.Stderr = &commandOutput
 
 	if err := cmd.Run(); err != nil {
-		return stderr.String(), fmt.Errorf("gh execution failed: %w", err)
+		return commandOutput.String(), fmt.Errorf("gh execution failed: %w", err)
 	}
 
-	return stderr.String(), nil
+	return commandOutput.String(), nil
 }
 
 func buildStaleSocketCleanupCommand(hasBrowserService, hasNotificationService bool) string {
