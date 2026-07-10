@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -339,6 +340,7 @@ func runCodespaceBashScript(ctx context.Context, codespaceName, script string) (
 
 	cmd := exec.CommandContext(ctx, ghExe, buildCodespaceBashStdinArgs(codespaceName)...)
 	cmd.Stdin = strings.NewReader(script)
+	cmd.Stdout = io.Discard
 
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
