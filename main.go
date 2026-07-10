@@ -253,6 +253,7 @@ func prepareCodespaceScripts(ctx context.Context, codespaceName string, hasBrows
 		return fmt.Errorf("error preparing scripts: %w\nStderr: %s", err, stderr)
 	}
 
+	// Print success messages
 	fmt.Fprintln(os.Stderr, "ADO and Azure auth helpers uploaded to the codespace and made executable")
 	fmt.Fprintln(os.Stderr, "xdg-open installed at /usr/local/bin/xdg-open")
 	if hasBrowserService {
