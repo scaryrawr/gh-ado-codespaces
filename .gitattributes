@@ -1,0 +1,6 @@
+# Normalize line endings across platforms.
+# The *.sh / *.py shims are embedded in the binary and executed in the Linux
+# codespace, so they must stay LF even on Windows checkouts.
+* text=auto eol=lf
+*.png binary
+*.exe binary

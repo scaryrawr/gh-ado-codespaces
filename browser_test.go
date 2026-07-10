@@ -109,8 +109,8 @@ func TestBuildSSHArgsWithBrowserService(t *testing.T) {
 	args := CommandLineArgs{}
 	sshArgs := args.BuildSSHArgs("/tmp/test.sock", 8080, service, nil)
 
-	// Verify browser socket forward is included (socket path -> localhost:port)
-	expectedForward := fmt.Sprintf("%s:localhost:%d", service.SocketPath, service.Port)
+	// Verify browser socket forward is included.
+	expectedForward := fmt.Sprintf("%s:%s:%d", service.SocketPath, localServiceHost, service.Port)
 	foundForward := false
 	for i := 0; i < len(sshArgs)-1; i++ {
 		if sshArgs[i] == "-R" && sshArgs[i+1] == expectedForward {
@@ -140,7 +140,7 @@ func TestBuildSSHArgsWithoutBrowserService(t *testing.T) {
 	for i := 0; i < len(sshArgs)-1; i++ {
 		if sshArgs[i] == "-R" {
 			// Make sure it's not a browser port (should be the auth socket or AI services)
-			if sshArgs[i+1] != "/tmp/test.sock:localhost:8080" {
+			if sshArgs[i+1] != "/tmp/test.sock:"+localServiceHost+":8080" {
 				// This is fine - could be other forwards like AI services
 				continue
 			}

@@ -6,6 +6,8 @@ import (
 	"strings"
 )
 
+const localServiceHost = "127.0.0.1"
+
 // CommandLineArgs holds all the command line arguments
 type CommandLineArgs struct {
 	CodespaceName       string
@@ -119,18 +121,18 @@ func (args *CommandLineArgs) BuildSSHArgs(socketPath string, port int, browserSe
 	sshArgs := []string{"--"} // Start with the separator
 
 	// Add the auth socket forward
-	forwardSpec := fmt.Sprintf("%s:localhost:%d", socketPath, port)
+	forwardSpec := fmt.Sprintf("%s:%s:%d", socketPath, localServiceHost, port)
 	sshArgs = append(sshArgs, "-R", forwardSpec)
 
 	// Add browser socket forward if browser service is available
 	if browserService != nil {
-		browserForwardSpec := fmt.Sprintf("%s:localhost:%d", browserService.SocketPath, browserService.Port)
+		browserForwardSpec := fmt.Sprintf("%s:%s:%d", browserService.SocketPath, localServiceHost, browserService.Port)
 		sshArgs = append(sshArgs, "-R", browserForwardSpec)
 	}
 
 	// Add notification socket forward if notification service is available
 	if notificationService != nil {
-		notificationForwardSpec := fmt.Sprintf("%s:localhost:%d", notificationService.SocketPath, notificationService.Port)
+		notificationForwardSpec := fmt.Sprintf("%s:%s:%d", notificationService.SocketPath, localServiceHost, notificationService.Port)
 		sshArgs = append(sshArgs, "-R", notificationForwardSpec)
 	}
 

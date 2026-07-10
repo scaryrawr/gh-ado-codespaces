@@ -112,7 +112,7 @@ type CommandLineArgs struct {
 
 Example:
 ```go
-listener, err := net.Listen("tcp", "localhost:0")
+listener, err := net.Listen("tcp", localServiceHost+":0")
 if err != nil {
     return nil, fmt.Errorf("failed to start local server: %w", err)
 }
@@ -221,6 +221,8 @@ func TestSanitizeForFilename(t *testing.T) {
 - Use `gh.Exec()` for non-interactive commands
 - Use `gh.ExecInteractive()` for interactive SSH sessions
 - Pass context to interactive commands for cancellation support
+- Send large remote scripts through stdin with `exec.CommandContext` and `gh.Path()`; Windows command lines cannot safely carry base64-encoded setup payloads
+- Use the explicit `127.0.0.1` service host for both listeners and SSH forwarding targets so `localhost` cannot resolve to an unmatched IPv6 address
 
 ### Azure Authentication
 - Use Azure SDK packages from `github.com/Azure/azure-sdk-for-go/sdk`
@@ -235,3 +237,4 @@ func TestSanitizeForFilename(t *testing.T) {
 - Do not log sensitive information (tokens, credentials)
 - Do not use panic for error handling; return errors instead
 - Do not modify global state without synchronization
+- Keep embedded Linux helper scripts (`*.sh` and `*.py`) LF-only through `.gitattributes`
