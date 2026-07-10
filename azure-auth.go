@@ -70,7 +70,7 @@ func logAuthMessage(format string, args ...interface{}) {
 // startServer initializes and starts the local TCP server for authentication.
 // It now takes a context for cancellation.
 func startServer(ctx context.Context, cred azcore.TokenCredential) (net.Listener, int, error) {
-	listener, err := net.Listen("tcp", "localhost:0")
+	listener, err := net.Listen("tcp", localServiceHost+":0")
 	if err != nil {
 		// logAuthMessage already called by SetupServer if this fails
 		return nil, 0, fmt.Errorf("failed to start local server: %w", err)
