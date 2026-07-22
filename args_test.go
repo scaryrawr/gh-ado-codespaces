@@ -179,6 +179,52 @@ func TestCommandLineArgs_BuildSSHArgs(t *testing.T) {
 	}
 }
 
+func TestSupportsX11Tunneling(t *testing.T) {
+	tests := []struct {
+		name    string
+		display string
+		want    bool
+	}{
+		{name: "display is empty", display: "", want: false},
+		{name: "display is whitespace", display: "  ", want: false},
+		{name: "local display", display: ":0", want: true},
+		{name: "remote display", display: "localhost:10.0", want: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("DISPLAY", tt.display)
+
+			if got := supportsX11Tunneling(); got != tt.want {
+				t.Errorf("supportsX11Tunneling() = %t, want %t", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCommandLineArgs_BuildSSHArgsWithX11Tunneling(t *testing.T) {
+	t.Setenv("DISPLAY", ":0")
+
+	args := CommandLineArgs{}
+	sshArgs := args.BuildSSHArgs("/tmp/socket", 8080, nil, nil)
+	want := []string{"-Y", "-t"}
+
+	for i := 0; i <= len(sshArgs)-len(want); i++ {
+		matches := true
+		for j := range want {
+			if sshArgs[i+j] != want[j] {
+				matches = false
+				break
+			}
+		}
+		if matches {
+			return
+		}
+	}
+
+	t.Errorf("BuildSSHArgs() = %v, want X11 options %v", sshArgs, want)
+}
+
 // Test helper function to capture os.Args manipulation
 func withArgs(args []string, fn func()) {
 	oldArgs := os.Args

@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"os"
 	"strings"
 )
 
@@ -144,10 +145,20 @@ func (args *CommandLineArgs) BuildSSHArgs(socketPath string, port int, browserSe
 		sshArgs = append(sshArgs, reverseArgs...)
 	}
 
+	if supportsX11Tunneling() {
+		sshArgs = append(sshArgs, "-Y")
+	}
+
 	sshArgs = append(sshArgs, "-t")
 
 	// Append remaining user-provided arguments (ssh flags or command)
 	sshArgs = append(sshArgs, args.RemainingArgs...)
 
 	return sshArgs
+}
+
+// supportsX11Tunneling reports whether the host has an X11 display available for forwarding.
+func supportsX11Tunneling() bool {
+	display, present := os.LookupEnv("DISPLAY")
+	return present && strings.TrimSpace(display) != ""
 }

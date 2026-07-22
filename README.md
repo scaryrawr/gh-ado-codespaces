@@ -70,6 +70,10 @@ You can also pass additional SSH flags after `--`, for example:
 gh ado-codespaces -- -L 3000:localhost:3000
 ```
 
+### X11 Tunneling
+
+When the host has a non-empty `DISPLAY` environment variable, interactive sessions automatically add trusted X11 forwarding with `-Y`. Install and start an X11 server on the host first (for example, XQuartz on macOS).
+
 ### Configuration
 
 The extension can read optional configuration values that are scoped per GitHub login. By default it looks for a JSON file at:
