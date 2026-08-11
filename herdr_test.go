@@ -87,6 +87,22 @@ func TestBuildHerdrSSHHostAliasIsSessionSpecific(t *testing.T) {
 	}
 }
 
+func TestHostConfigFileNameAvoidsTruncationCollisions(t *testing.T) {
+	commonPrefix := strings.Repeat("a", 50)
+	first := hostConfigFileName(commonPrefix + "-first-codespace")
+	second := hostConfigFileName(commonPrefix + "-second-codespace")
+
+	if first == second {
+		t.Fatalf("host config filenames must be unique, got %q", first)
+	}
+	if !strings.HasPrefix(first, commonPrefix+"-") {
+		t.Fatalf("unexpected host config filename %q", first)
+	}
+	if !strings.HasSuffix(first, ".conf") {
+		t.Fatalf("host config filename must use .conf extension, got %q", first)
+	}
+}
+
 func TestBuildHerdrSessionConfig(t *testing.T) {
 	originalPorts := WellKnownPorts
 	WellKnownPorts = []ReversePortForward{{

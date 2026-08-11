@@ -34,7 +34,7 @@ func newHerdrSSHConfig(homeDir, codespaceName, currentSessionID string) herdrSSH
 
 	return herdrSSHConfig{
 		rootDir:     rootDir,
-		hostFile:    filepath.Join(rootDir, herdrHostsDirectory, sanitizeForFilename(codespaceName)+".conf"),
+		hostFile:    filepath.Join(rootDir, herdrHostsDirectory, hostConfigFileName(codespaceName)),
 		sessionFile: filepath.Join(rootDir, herdrSessionsDirectory, sessionConfigFileName(currentSessionID)),
 		mainConfig:  filepath.Join(homeDir, ".ssh", "config"),
 	}
@@ -147,6 +147,12 @@ func sessionConfigFileName(currentSessionID string) string {
 	sessionHash := sha256.Sum256([]byte(currentSessionID))
 
 	return fmt.Sprintf("session-%x.conf", sessionHash[:8])
+}
+
+func hostConfigFileName(codespaceName string) string {
+	nameHash := sha256.Sum256([]byte(codespaceName))
+
+	return fmt.Sprintf("%s-%x.conf", sanitizeForFilename(codespaceName), nameHash[:8])
 }
 
 func validateSSHHostAlias(alias string) error {

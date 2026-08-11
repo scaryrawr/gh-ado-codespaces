@@ -53,7 +53,7 @@ To use Herdr as the interactive remote client instead of opening an SSH shell:
 gh ado-codespaces --herdr
 ```
 
-The extension performs the same setup, writes GitHub CLI-generated Codespaces entries to a managed OpenSSH include, and launches `herdr --remote <codespace-name>`. Keep the extension process running while using Herdr because the authentication, browser, notification, and port-forwarding services are local to that process.
+The extension performs the same setup, writes GitHub CLI-generated Codespaces entries to a managed OpenSSH include, and launches Herdr with an internal session-specific SSH host alias for the selected Codespace. Keep the extension process running while using Herdr because the authentication, browser, notification, and port-forwarding services are local to that process.
 
 ### Command Line Options
 
