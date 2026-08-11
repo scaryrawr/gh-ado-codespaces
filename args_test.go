@@ -95,6 +95,30 @@ func TestCommandLineArgs_BuildGHFlags(t *testing.T) {
 	}
 }
 
+func TestCommandLineArgs_Validate(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    CommandLineArgs
+		wantErr bool
+	}{
+		{name: "standard SSH mode", args: CommandLineArgs{}},
+		{name: "Herdr mode", args: CommandLineArgs{Herdr: true}},
+		{name: "Herdr with config", args: CommandLineArgs{Herdr: true, Config: true}, wantErr: true},
+		{name: "Herdr with profile", args: CommandLineArgs{Herdr: true, Profile: "work"}, wantErr: true},
+		{name: "Herdr with server port", args: CommandLineArgs{Herdr: true, ServerPort: 2222}, wantErr: true},
+		{name: "Herdr with SSH arguments", args: CommandLineArgs{Herdr: true, RemainingArgs: []string{"-L", "3000:localhost:3000"}}, wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.args.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("Validate() error = %v, wantErr %t", err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestCommandLineArgs_BuildSSHArgs(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -244,6 +268,7 @@ func TestParseArgs_StructFields(t *testing.T) {
 		Debug:               true,
 		DebugFile:           "test.log",
 		AzureSubscriptionId: "test-sub",
+		Herdr:               true,
 		Logs:                true,
 		Profile:             "test-profile",
 		Repo:                "test/repo",
@@ -267,6 +292,9 @@ func TestParseArgs_StructFields(t *testing.T) {
 	}
 	if args.AzureSubscriptionId != "test-sub" {
 		t.Errorf("Expected AzureSubscriptionId to be 'test-sub', got %s", args.AzureSubscriptionId)
+	}
+	if !args.Herdr {
+		t.Error("Expected Herdr to be true")
 	}
 	if !args.Logs {
 		t.Error("Expected Logs to be true")

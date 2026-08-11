@@ -16,6 +16,7 @@ type CommandLineArgs struct {
 	Debug               bool
 	DebugFile           string
 	AzureSubscriptionId string
+	Herdr               bool
 	Logs                bool
 	Profile             string
 	Repo                string
@@ -32,6 +33,7 @@ func ParseArgs() CommandLineArgs {
 	debugFlag := flag.Bool("debug", false, "Log debug data to a file")
 	dFlag := flag.Bool("d", false, "Log debug data to a file (shorthand for --debug)")
 	debugFile := flag.String("debug-file", "", "Path of the file log to")
+	herdrFlag := flag.Bool("herdr", false, "Connect with Herdr instead of an interactive SSH session")
 	logsFlag := flag.Bool("logs", false, "List recent log files and exit")
 	azureSub := flag.String("azure-subscription-id", "", "Azure subscription ID to use for authentication (persisted per GitHub account)")
 	// Allow an alternate flag name without -id suffix for convenience
@@ -69,6 +71,7 @@ func ParseArgs() CommandLineArgs {
 		Debug:               actualDebug,
 		DebugFile:           *debugFile,
 		AzureSubscriptionId: strings.TrimSpace(actualAzureSub),
+		Herdr:               *herdrFlag,
 		Logs:                *logsFlag,
 		Profile:             *profile,
 		Repo:                actualRepo,
@@ -76,6 +79,31 @@ func ParseArgs() CommandLineArgs {
 		ServerPort:          *serverPort,
 		RemainingArgs:       flag.Args(),
 	}
+}
+
+// Validate checks command-line option combinations that cannot be supported.
+func (args *CommandLineArgs) Validate() error {
+	if !args.Herdr {
+		return nil
+	}
+
+	if args.Config {
+		return fmt.Errorf("--config cannot be combined with --herdr")
+	}
+
+	if args.Profile != "" {
+		return fmt.Errorf("--profile cannot be combined with --herdr because GitHub CLI does not support it with generated SSH config")
+	}
+
+	if args.ServerPort != 0 {
+		return fmt.Errorf("--server-port cannot be combined with --herdr because GitHub CLI does not support it with generated SSH config")
+	}
+
+	if len(args.RemainingArgs) > 0 {
+		return fmt.Errorf("SSH arguments after -- cannot be used with --herdr")
+	}
+
+	return nil
 }
 
 // BuildGHFlags builds the arguments for the 'gh codespace ssh' command
@@ -121,28 +149,8 @@ func (args *CommandLineArgs) BuildGHFlags() []string {
 func (args *CommandLineArgs) BuildSSHArgs(socketPath string, port int, browserService *BrowserService, notificationService *NotificationService) []string {
 	sshArgs := []string{"--"} // Start with the separator
 
-	// Add the auth socket forward
-	forwardSpec := fmt.Sprintf("%s:%s:%d", socketPath, localServiceHost, port)
-	sshArgs = append(sshArgs, "-R", forwardSpec)
-
-	// Add browser socket forward if browser service is available
-	if browserService != nil {
-		browserForwardSpec := fmt.Sprintf("%s:%s:%d", browserService.SocketPath, localServiceHost, browserService.Port)
-		sshArgs = append(sshArgs, "-R", browserForwardSpec)
-	}
-
-	// Add notification socket forward if notification service is available
-	if notificationService != nil {
-		notificationForwardSpec := fmt.Sprintf("%s:%s:%d", notificationService.SocketPath, localServiceHost, notificationService.Port)
-		sshArgs = append(sshArgs, "-R", notificationForwardSpec)
-	}
-
-	// Detect and add reverse port forwards for local AI services
-	boundForwards := GetBoundReverseForwards()
-	if len(boundForwards) > 0 {
-		LogReverseForwards(boundForwards)
-		reverseArgs := BuildReverseForwardArgs(boundForwards)
-		sshArgs = append(sshArgs, reverseArgs...)
+	for _, forward := range buildRemoteForwards(socketPath, port, browserService, notificationService) {
+		sshArgs = append(sshArgs, "-R", forward.argument())
 	}
 
 	if supportsX11Tunneling() {
@@ -155,6 +163,49 @@ func (args *CommandLineArgs) BuildSSHArgs(socketPath string, port int, browserSe
 	sshArgs = append(sshArgs, args.RemainingArgs...)
 
 	return sshArgs
+}
+
+type remoteForward struct {
+	remote string
+	local  string
+}
+
+func (forward remoteForward) argument() string {
+	return forward.remote + ":" + forward.local
+}
+
+func buildRemoteForwards(socketPath string, port int, browserService *BrowserService, notificationService *NotificationService) []remoteForward {
+	forwards := []remoteForward{{
+		remote: socketPath,
+		local:  fmt.Sprintf("%s:%d", localServiceHost, port),
+	}}
+
+	if browserService != nil {
+		forwards = append(forwards, remoteForward{
+			remote: browserService.SocketPath,
+			local:  fmt.Sprintf("%s:%d", localServiceHost, browserService.Port),
+		})
+	}
+
+	if notificationService != nil {
+		forwards = append(forwards, remoteForward{
+			remote: notificationService.SocketPath,
+			local:  fmt.Sprintf("%s:%d", localServiceHost, notificationService.Port),
+		})
+	}
+
+	boundForwards := GetBoundReverseForwards()
+	if len(boundForwards) > 0 {
+		LogReverseForwards(boundForwards)
+		for _, forward := range boundForwards {
+			forwards = append(forwards, remoteForward{
+				remote: fmt.Sprint(forward.Port),
+				local:  fmt.Sprintf("localhost:%d", forward.Port),
+			})
+		}
+	}
+
+	return forwards
 }
 
 // supportsX11Tunneling reports whether the host has an X11 display available for forwarding.

@@ -17,6 +17,7 @@ When working with GitHub Codespaces and Azure DevOps services, authentication ca
 - [GitHub CLI](https://cli.github.com/) (`gh`) installed and authenticated
 - [Azure CLI](https://docs.microsoft.com/en-us/cli/azure/install-azure-cli) (`az`) installed and logged in to the appropriate tenant
 - A GitHub Codespace with [Artifacts Helper](https://github.com/microsoft/codespace-features/tree/main/src/artifacts-helper) configured
+- [Herdr](https://herdr.dev/) installed locally when using `--herdr`
 
 ## Installation
 
@@ -46,6 +47,14 @@ The extension will:
 4. Start an interactive SSH session
 5. Automatically forward detected application ports from your codespace
 
+To use Herdr as the interactive remote client instead of opening an SSH shell:
+
+```fish
+gh ado-codespaces --herdr
+```
+
+The extension performs the same setup, writes GitHub CLI-generated Codespaces entries to a managed OpenSSH include, and launches Herdr with an internal session-specific SSH host alias for the selected Codespace. Keep the extension process running while using Herdr because the authentication, browser, notification, and port-forwarding services are local to that process.
+
 ### Command Line Options
 
 ```
@@ -58,6 +67,7 @@ Flags:
   --debug, -d                Log debug data to a file
   --debug-file string        Path of the file to log to
   --azure-subscription-id string  Azure subscription ID to use for authentication (persisted per GitHub account)
+  --herdr                    Connect with Herdr instead of an interactive SSH session
   --profile string           Name of the SSH profile to use
   --repo, -R string          Filter codespace selection by repository name (user/repo)
   --repo-owner string        Filter codespace selection by repository owner (username or org)
@@ -68,6 +78,20 @@ You can also pass additional SSH flags after `--`, for example:
 
 ```fish
 gh ado-codespaces -- -L 3000:localhost:3000
+```
+
+Arguments after `--` are not supported with `--herdr` because Herdr owns the SSH invocation.
+The `--profile` and `--server-port` options are also unavailable in Herdr mode because GitHub CLI cannot combine them with generated OpenSSH configuration.
+
+### Herdr remote sessions
+
+Herdr mode uses `gh codespace ssh --config` to maintain reusable host entries under `~/.ssh/gh-ado-codespaces/`. The extension adds idempotent `Include` lines to `~/.ssh/config`; it does not replace existing SSH configuration. Dynamic forwarding settings are stored in a session file and removed when the extension exits.
+
+You can combine Herdr mode with the existing selection filters:
+
+```fish
+gh ado-codespaces --herdr --repo owner/repository
+gh ado-codespaces --herdr --codespace codespace-name
 ```
 
 ### X11 Tunneling
@@ -168,6 +192,7 @@ See [docs/testing.md](docs/testing.md) for the full test suite overview and addi
 
 - Authentication is tied to your local Azure CLI session
 - Initial setup with Artifacts Helper is required in the codespace
+- Herdr mode requires the system OpenSSH client to honor `~/.ssh/config`
 
 ## Acknowledgments
 
