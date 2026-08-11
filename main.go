@@ -45,6 +45,21 @@ func main() {
 		return
 	}
 
+	if err := args.Validate(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		return
+	}
+
+	var herdrExecutable string
+	if args.Herdr {
+		var err error
+		herdrExecutable, err = findHerdrExecutable()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			return
+		}
+	}
+
 	cfg, cfgErr := LoadAppConfig()
 	if cfgErr != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to load config: %v\n", cfgErr)
@@ -164,13 +179,6 @@ func main() {
 		defer notificationService.Stop()
 	}
 
-	// Build command line arguments for gh
-	ghFlags := args.BuildGHFlags()
-	sshArgs := args.BuildSSHArgs(serverConfig.SocketPath, serverConfig.Port, browserService, notificationService)
-
-	// Combine all arguments
-	finalArgs := append(ghFlags, sshArgs...)
-
 	// Upload all scripts and configure them in a single SSH call
 	if err := prepareCodespaceScripts(ctx, args.CodespaceName, browserService != nil, notificationService != nil); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to prepare codespace scripts: %v\n", err)
@@ -198,8 +206,25 @@ func main() {
 		monitorController.Wait() // Wait for cleanup
 	}()
 
-	// Execute the command
-	// Pass the cancellable context to gh.ExecInteractive
+	if args.Herdr {
+		herdrHostAlias, cleanupSSHConfig, err := setupHerdrSSHConfig(ctx, args.CodespaceName, &args, serverConfig, browserService, notificationService)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			return
+		}
+		defer cleanupSSHConfig()
+
+		if err := runHerdr(ctx, herdrExecutable, herdrHostAlias); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		}
+
+		return
+	}
+
+	ghFlags := args.BuildGHFlags()
+	sshArgs := args.BuildSSHArgs(serverConfig.SocketPath, serverConfig.Port, browserService, notificationService)
+	finalArgs := append(ghFlags, sshArgs...)
+
 	gh.ExecInteractive(ctx, finalArgs...)
 }
 
