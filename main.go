@@ -305,7 +305,7 @@ func buildCodespacePreparationScript(hasBrowserService, hasNotificationService b
 		"[ -n \"$auth_helper_node\" ] || { echo 'Node.js is required for the ADO auth helper' >&2; exit 1; }")
 
 	// Base64-encode and write auth helper to two destinations
-	authHelperBody := strings.TrimPrefix(adoAuthHelperScript, "#!/usr/bin/env node\n")
+	authHelperBody := stripScriptShebang(adoAuthHelperScript)
 	authB64 := base64.StdEncoding.EncodeToString([]byte(authHelperBody))
 	cmdParts = append(cmdParts,
 		fmt.Sprintf(
@@ -363,6 +363,18 @@ func buildCodespacePreparationScript(hasBrowserService, hasNotificationService b
 	}
 
 	return "set -e\n" + strings.Join(cmdParts, "\n") + "\n"
+}
+
+func stripScriptShebang(script string) string {
+	if !strings.HasPrefix(script, "#!") {
+		return script
+	}
+
+	if shebangEnd := strings.IndexByte(script, '\n'); shebangEnd >= 0 {
+		return script[shebangEnd+1:]
+	}
+
+	return ""
 }
 
 // buildCodespaceBashStdinArgs returns a short gh invocation that reads setup commands from stdin.
