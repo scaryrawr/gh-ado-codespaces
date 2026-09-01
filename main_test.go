@@ -314,7 +314,12 @@ func TestBuildCodespacePreparationScript(t *testing.T) {
 
 	expectedSnippets := []string{
 		"set -e\n",
-		"> ~/ado-auth-helper && cp ~/ado-auth-helper ~/azure-auth-helper",
+		"existing_node=$(sed -n '1s/^#!//p' ~/ado-auth-helper)",
+		"\"$existing_node\" -e 'process.exit(0)'",
+		"auth_helper_node=$(command -v node || true)",
+		"printf '#!%s\\n' \"$auth_helper_node\" > ~/ado-auth-helper",
+		"base64 -d >> ~/ado-auth-helper",
+		"cp ~/ado-auth-helper ~/azure-auth-helper",
 		"> ~/port-monitor.sh",
 		"> ~/browser-opener.sh",
 		"> ~/notification-sender.sh",
@@ -331,6 +336,43 @@ func TestBuildCodespacePreparationScript(t *testing.T) {
 		if !strings.Contains(script, snippet) {
 			t.Errorf("Expected setup script to contain %q", snippet)
 		}
+	}
+}
+
+func TestStripScriptShebang(t *testing.T) {
+	tests := []struct {
+		name   string
+		script string
+		want   string
+	}{
+		{
+			name:   "env shebang",
+			script: "#!/usr/bin/env node\nconsole.log('test');\n",
+			want:   "console.log('test');\n",
+		},
+		{
+			name:   "absolute shebang with argument",
+			script: "#!/usr/bin/node --no-warnings\nconsole.log('test');\n",
+			want:   "console.log('test');\n",
+		},
+		{
+			name:   "shebang without body",
+			script: "#!/usr/bin/env node",
+			want:   "",
+		},
+		{
+			name:   "no shebang",
+			script: "console.log('test');\n",
+			want:   "console.log('test');\n",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := stripScriptShebang(test.script); got != test.want {
+				t.Fatalf("stripScriptShebang() = %q, want %q", got, test.want)
+			}
+		})
 	}
 }
 

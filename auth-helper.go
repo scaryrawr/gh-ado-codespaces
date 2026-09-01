@@ -9,13 +9,13 @@ import (
 	"github.com/cli/go-gh/v2"
 )
 
-//go:embed ado-auth-helper.py
+//go:embed ado-auth-helper.js
 var adoAuthHelperScript string
 
 // uploadAuthHelperFiles uploads the ADO and Azure auth helper scripts to the specified codespace.
 func uploadAuthHelperFiles(ctx context.Context, codespaceName string) error {
 	// Create temporary files for both helper scripts
-	adoHelperFile, err := os.CreateTemp("", "ado-auth-helper*.py")
+	adoHelperFile, err := os.CreateTemp("", "ado-auth-helper*.js")
 	if err != nil {
 		return fmt.Errorf("failed to create temporary file for ADO helper: %w", err)
 	}
