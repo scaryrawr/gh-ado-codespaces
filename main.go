@@ -292,10 +292,28 @@ func prepareCodespaceScripts(ctx context.Context, codespaceName string, hasBrows
 func buildCodespacePreparationScript(hasBrowserService, hasNotificationService bool) string {
 	var cmdParts []string
 
-	// Base64-encode and write auth helper to two destinations
-	authB64 := base64.StdEncoding.EncodeToString([]byte(adoAuthHelperScript))
 	cmdParts = append(cmdParts,
-		fmt.Sprintf("printf %%s %s | base64 -d > ~/ado-auth-helper && cp ~/ado-auth-helper ~/azure-auth-helper", authB64))
+		"auth_helper_node=",
+		"if [ -f ~/ado-auth-helper ]; then\n"+
+			"  existing_node=$(sed -n '1s/^#!//p' ~/ado-auth-helper)\n"+
+			"  if [ -n \"$existing_node\" ] && [ -x \"$existing_node\" ] && "+
+			"\"$existing_node\" -e 'process.exit(0)' >/dev/null 2>&1; then\n"+
+			"    auth_helper_node=\"$existing_node\"\n"+
+			"  fi\n"+
+			"fi",
+		"if [ -z \"$auth_helper_node\" ]; then auth_helper_node=$(command -v node || true); fi",
+		"[ -n \"$auth_helper_node\" ] || { echo 'Node.js is required for the ADO auth helper' >&2; exit 1; }")
+
+	// Base64-encode and write auth helper to two destinations
+	authHelperBody := strings.TrimPrefix(adoAuthHelperScript, "#!/usr/bin/env node\n")
+	authB64 := base64.StdEncoding.EncodeToString([]byte(authHelperBody))
+	cmdParts = append(cmdParts,
+		fmt.Sprintf(
+			"printf '#!%%s\\n' \"$auth_helper_node\" > ~/ado-auth-helper && "+
+				"printf %%s %s | base64 -d >> ~/ado-auth-helper && "+
+				"cp ~/ado-auth-helper ~/azure-auth-helper",
+			authB64,
+		))
 
 	// Base64-encode and write port monitor script
 	portB64 := base64.StdEncoding.EncodeToString([]byte(portMonitorScript))

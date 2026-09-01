@@ -314,7 +314,12 @@ func TestBuildCodespacePreparationScript(t *testing.T) {
 
 	expectedSnippets := []string{
 		"set -e\n",
-		"> ~/ado-auth-helper && cp ~/ado-auth-helper ~/azure-auth-helper",
+		"existing_node=$(sed -n '1s/^#!//p' ~/ado-auth-helper)",
+		"\"$existing_node\" -e 'process.exit(0)'",
+		"auth_helper_node=$(command -v node || true)",
+		"printf '#!%s\\n' \"$auth_helper_node\" > ~/ado-auth-helper",
+		"base64 -d >> ~/ado-auth-helper",
+		"cp ~/ado-auth-helper ~/azure-auth-helper",
 		"> ~/port-monitor.sh",
 		"> ~/browser-opener.sh",
 		"> ~/notification-sender.sh",
