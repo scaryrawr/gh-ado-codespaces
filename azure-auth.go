@@ -13,9 +13,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
-	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/google/uuid"
 )
 
@@ -126,7 +123,7 @@ func (l *authLog) Close() {
 
 // startServer initializes and starts the local TCP server for authentication.
 // It now takes a context for cancellation.
-func startServer(ctx context.Context, cred azcore.TokenCredential, logger *authLog) (net.Listener, int, <-chan struct{}, *activeConnections, error) {
+func startServer(ctx context.Context, provider tokenProvider, logger *authLog) (net.Listener, int, <-chan struct{}, *activeConnections, error) {
 	listener, err := net.Listen("tcp", localServiceHost+":0")
 	if err != nil {
 		return nil, 0, nil, nil, fmt.Errorf("failed to start local server: %w", err)
@@ -180,7 +177,7 @@ func startServer(ctx context.Context, cred azcore.TokenCredential, logger *authL
 			}
 			go func() {
 				defer connections.Done(conn)
-				handleConnection(ctx, conn, cred, logger)
+				handleConnection(ctx, conn, provider, logger)
 			}()
 		}
 	}()
@@ -202,7 +199,7 @@ type TokenResponse struct {
 
 // handleConnection processes a single client connection.
 // It now takes a context for cancellation.
-func handleConnection(ctx context.Context, conn net.Conn, cred azcore.TokenCredential, logger *authLog) {
+func handleConnection(ctx context.Context, conn net.Conn, provider tokenProvider, logger *authLog) {
 	defer conn.Close()
 	reader := bufio.NewReader(conn)
 	writer := bufio.NewWriter(conn)
@@ -247,26 +244,24 @@ func handleConnection(ctx context.Context, conn net.Conn, cred azcore.TokenCrede
 		logger.Printf("Request from %s - Type: '%s', Scopes: %v", clientAddr, tokenReq.Type, tokenReq.Data.Scopes)
 
 		if tokenReq.Type == "getAccessToken" {
-			var scopes []string
-			if tokenReq.Data.Scopes == nil || *tokenReq.Data.Scopes == "" {
-				scopes = []string{"499b84ac-1321-427f-aa17-267ca6975798/.default"}
-				logger.Printf("No scopes from %s, using default: %v", clientAddr, scopes)
-			} else {
-				scopes = strings.Split(*tokenReq.Data.Scopes, " ")
-				logger.Printf("Scopes from %s: %v", clientAddr, scopes)
-			}
-
-			token, err := cred.GetToken(ctx, policy.TokenRequestOptions{Scopes: scopes}) // Pass context
+			target, err := parseTokenTarget(tokenReq.Data.Scopes)
 			if err != nil {
-				logger.Printf("Error getting token for %s (scopes %v): %s", clientAddr, scopes, redactSecrets(err.Error()))
+				logger.Printf("Invalid scopes from %s: %s", clientAddr, redactSecrets(err.Error()))
+				continue
+			}
+			logger.Printf("Token target from %s: %v", clientAddr, target.values)
+
+			token, err := provider.GetAccessToken(ctx, target)
+			if err != nil {
+				logger.Printf("Error getting token for %s (scopes %v): %s", clientAddr, target.values, redactSecrets(err.Error()))
 				continue
 			}
 
-			logger.Printf("Successfully obtained token for %s (scopes %v)", clientAddr, scopes)
+			logger.Printf("Successfully obtained token for %s (scopes %v)", clientAddr, target.values)
 
 			tokenResp := TokenResponse{
 				Type: "accessToken",
-				Data: token.Token,
+				Data: token,
 			}
 
 			respBytes, err := json.Marshal(tokenResp)
@@ -382,20 +377,17 @@ func setupServer(ctx context.Context, logPath string) (*ServerConfig, error) {
 		}
 	}
 
-	var cred azcore.TokenCredential
-	if strings.TrimSpace(subscription) == "" {
-		cred, err = azidentity.NewAzureCLICredential(nil)
-	} else {
+	if strings.TrimSpace(subscription) != "" {
 		logger.Printf("Creating Azure CLI credential with subscription override %s", subscription)
-		cred, err = azidentity.NewAzureCLICredential(&azidentity.AzureCLICredentialOptions{Subscription: subscription})
 	}
+	provider, err := newAzureTokenProvider(subscription)
 	if err != nil {
 		logger.Printf("Error creating Azure credential: %s", redactSecrets(err.Error()))
 		logger.Close()
 		return nil, fmt.Errorf("error creating Azure credential: %w", err)
 	}
 
-	listener, port, acceptDone, connections, err := startServer(ctx, cred, logger)
+	listener, port, acceptDone, connections, err := startServer(ctx, provider, logger)
 	if err != nil {
 		logger.Printf("Error starting server components: %s", redactSecrets(err.Error()))
 		logger.Close()

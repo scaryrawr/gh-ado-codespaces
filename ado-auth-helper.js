@@ -115,7 +115,8 @@ async function main() {
 
   if (command === "get-access-token") {
     const scriptName = path.basename(process.argv[1]);
-    const scopes = scriptName === "azure-auth-helper" ? process.argv[3] : undefined;
+    const scopeArgs = scriptName === "azure-auth-helper" ? process.argv.slice(3) : [];
+    const scopes = scopeArgs.length > 0 ? scopeArgs.join(" ") : undefined;
     const token = await getAccessToken(scopes);
     if (!token) {
       process.exitCode = 1;
