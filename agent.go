@@ -1193,7 +1193,7 @@ func (codespaceRuntime) Start(ctx context.Context, spec AgentStart) (RuntimeSess
 	if err != nil {
 		return nil, err
 	}
-	if err := prepareCodespaceScripts(ctx, spec.Codespace, false, false); err != nil {
+	if err := prepareCodespaceScripts(ctx, spec.Codespace, false, false, nil); err != nil {
 		server.Close()
 		return nil, err
 	}
