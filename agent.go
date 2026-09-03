@@ -589,6 +589,8 @@ type protocolInput struct {
 	err  error
 }
 
+const protocolDispatchLimit = 32
+
 func scanProtocolInput(input io.Reader, stop <-chan struct{}) <-chan protocolInput {
 	inputs := make(chan protocolInput, 1)
 	go func() {
@@ -685,13 +687,23 @@ func serveAgentProtocol(ctx context.Context, input io.Reader, output io.Writer, 
 
 	inputs := scanProtocolInput(input, stopInput)
 	var dispatches sync.WaitGroup
+	dispatchSlots := make(chan struct{}, protocolDispatchLimit)
 	var serveErr error
 	writerFinished := false
 	var shutdownID string
+	reserveDispatch := func() bool {
+		select {
+		case dispatchSlots <- struct{}{}:
+			return true
+		default:
+			return false
+		}
+	}
 	dispatch := func(run func() protocolResponse) {
 		dispatches.Add(1)
 		go func() {
 			defer dispatches.Done()
+			defer func() { <-dispatchSlots }()
 			send(run())
 		}()
 	}
@@ -709,19 +721,14 @@ func serveAgentProtocol(ctx context.Context, input io.Reader, output io.Writer, 
 			request, requestErr := parseProtocolRequest(input.line)
 			if requestErr == nil && request.Method == "shutdown" {
 				var params struct{}
-				if err := decodeStrict(request.Params, &params); err != nil {
-					id := request.ID
-					dispatch(func() protocolResponse {
-						return protocolResponse{
-							Type:  "response",
-							ID:    id,
-							Error: &protocolError{Code: "invalid_params", Message: "shutdown params must be an empty object"},
-						}
-					})
-					continue
+				if err := decodeStrict(request.Params, &params); err == nil {
+					shutdownID = request.ID
+					goto shutdown
 				}
-				shutdownID = request.ID
-				goto shutdown
+			}
+			if !reserveDispatch() {
+				send(protocolResponseForError(request.ID, protocolFailure("server_busy", "the supervisor has too many requests in flight")))
+				continue
 			}
 			if prepared, ok := prepareAgentStart(dispatchCtx, request, requestErr, supervisor); ok {
 				dispatch(prepared)

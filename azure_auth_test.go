@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -82,5 +83,30 @@ func TestServerConfigCloseClosesActiveConnections(t *testing.T) {
 	}
 	if connections.Count() != 0 {
 		t.Fatalf("active connection count = %d, want 0", connections.Count())
+	}
+}
+
+func TestNewAuthLogRestrictsPermissions(t *testing.T) {
+	logPath := filepath.Join(t.TempDir(), "private", "agent.log")
+	logger, err := newAuthLog(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	logger.Close()
+
+	directoryInfo, err := os.Stat(filepath.Dir(logPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if permissions := directoryInfo.Mode().Perm(); permissions != 0700 {
+		t.Fatalf("auth log directory permissions = %04o, want 0700", permissions)
+	}
+
+	fileInfo, err := os.Stat(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if permissions := fileInfo.Mode().Perm(); permissions != 0600 {
+		t.Fatalf("auth log file permissions = %04o, want 0600", permissions)
 	}
 }

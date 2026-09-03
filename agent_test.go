@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -40,6 +41,40 @@ type blockingCloseRuntime struct {
 type pendingForceRuntime struct {
 	closeTimeout time.Duration
 	allowForce   <-chan struct{}
+}
+
+type blockingListRuntime struct {
+	active    atomic.Int32
+	maxActive atomic.Int32
+}
+
+func (r *blockingListRuntime) ListCodespaces(ctx context.Context) ([]Codespace, error) {
+	active := r.active.Add(1)
+	defer r.active.Add(-1)
+	for {
+		maxActive := r.maxActive.Load()
+		if active <= maxActive || r.maxActive.CompareAndSwap(maxActive, active) {
+			break
+		}
+	}
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+func (*blockingListRuntime) CodespaceStatus(context.Context, string) (CodespaceStatus, error) {
+	return CodespaceStatus{}, nil
+}
+
+func (*blockingListRuntime) StartCodespace(context.Context, string) (CodespaceStatus, error) {
+	return CodespaceStatus{}, nil
+}
+
+func (*blockingListRuntime) StopCodespace(context.Context, string) (CodespaceStatus, error) {
+	return CodespaceStatus{}, nil
+}
+
+func (*blockingListRuntime) Start(context.Context, AgentStart) (RuntimeSession, error) {
+	return nil, errors.New("unexpected agent start")
 }
 
 func (r *blockingCloseRuntime) ListCodespaces(context.Context) ([]Codespace, error) {
@@ -1594,6 +1629,38 @@ func TestServeAgentProtocol_InvalidShutdownContinuesServing(t *testing.T) {
 	}
 	if response := responses["done"]; response.Error != nil {
 		t.Fatalf("valid shutdown response = %+v", response)
+	}
+}
+
+func TestServeAgentProtocol_BoundsConcurrentDispatch(t *testing.T) {
+	runtime := &blockingListRuntime{}
+	supervisor := newTestSupervisor(t, runtime)
+	var input strings.Builder
+	for index := 0; index < protocolDispatchLimit+1; index++ {
+		fmt.Fprintf(&input, `{"id":"list-%d","method":"codespaces.list","params":{}}`+"\n", index)
+	}
+	input.WriteString(`{"id":"shutdown","method":"shutdown","params":{}}` + "\n")
+	var output bytes.Buffer
+
+	if err := serveAgentProtocol(context.Background(), strings.NewReader(input.String()), &output, io.Discard, supervisor); err != nil {
+		t.Fatalf("serveAgentProtocol() error = %v", err)
+	}
+
+	busyResponses := 0
+	for _, line := range strings.Split(strings.TrimSpace(output.String()), "\n") {
+		var response protocolResponse
+		if err := json.Unmarshal([]byte(line), &response); err != nil {
+			t.Fatal(err)
+		}
+		if response.Error != nil && response.Error.Code == "server_busy" {
+			busyResponses++
+		}
+	}
+	if busyResponses != 1 {
+		t.Fatalf("server_busy responses = %d, want 1", busyResponses)
+	}
+	if maxActive := runtime.maxActive.Load(); maxActive > protocolDispatchLimit {
+		t.Fatalf("maximum active dispatches = %d, want at most %d", maxActive, protocolDispatchLimit)
 	}
 }
 

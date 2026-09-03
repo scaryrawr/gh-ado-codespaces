@@ -89,11 +89,11 @@ func newAuthLog(logPath string) (*authLog, error) {
 			return nil, fmt.Errorf("failed to create session log directory: %w", err)
 		}
 		logPath = getSessionLogPath("azure-auth.log")
-	} else if err := os.MkdirAll(filepath.Dir(logPath), 0755); err != nil {
+	} else if err := os.MkdirAll(filepath.Dir(logPath), 0700); err != nil {
 		return nil, fmt.Errorf("failed to create auth log directory: %w", err)
 	}
 
-	file, err := os.Create(logPath)
+	file, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "CRITICAL: Failed to create auth log file '%s': %v\\n", logPath, err)
 		return nil, fmt.Errorf("failed to create auth log file: %w", err)
