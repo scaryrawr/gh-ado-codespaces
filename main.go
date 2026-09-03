@@ -187,8 +187,19 @@ func main() {
 		defer notificationService.Stop()
 	}
 
+	terminalToolService, err := startTerminalToolService(ctx, &args)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: local terminal tools disabled: %v\n", err)
+	} else if terminalToolService != nil {
+		defer terminalToolService.Stop()
+	}
+
 	// Upload all scripts and configure them in a single SSH call
-	if err := prepareCodespaceScripts(ctx, args.CodespaceName, browserService != nil, notificationService != nil); err != nil {
+	var terminalTools map[terminalToolID]detectedTerminalTool
+	if terminalToolService != nil {
+		terminalTools = terminalToolService.tools
+	}
+	if err := prepareCodespaceScripts(ctx, args.CodespaceName, browserService != nil, notificationService != nil, terminalTools); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to prepare codespace scripts: %v\n", err)
 	}
 
@@ -214,8 +225,13 @@ func main() {
 		monitorController.Wait() // Wait for cleanup
 	}()
 
+	var terminalForward []remoteForward
+	if terminalToolService != nil {
+		terminalForward = []remoteForward{terminalToolService.RemoteForward()}
+	}
+
 	if args.Herdr {
-		herdrHostAlias, cleanupSSHConfig, err := setupHerdrSSHConfig(ctx, args.CodespaceName, &args, serverConfig, browserService, notificationService)
+		herdrHostAlias, cleanupSSHConfig, err := setupHerdrSSHConfig(ctx, args.CodespaceName, &args, serverConfig, browserService, notificationService, terminalForward...)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			return
@@ -230,7 +246,7 @@ func main() {
 	}
 
 	ghFlags := args.BuildGHFlags()
-	sshArgs := args.BuildSSHArgs(serverConfig.SocketPath, serverConfig.Port, browserService, notificationService)
+	sshArgs := args.BuildSSHArgs(serverConfig.SocketPath, serverConfig.Port, browserService, notificationService, terminalForward...)
 	finalArgs := append(ghFlags, sshArgs...)
 
 	gh.ExecInteractive(ctx, finalArgs...)
@@ -282,8 +298,8 @@ func sanitizeForFilename(name string) string {
 }
 
 // prepareCodespaceScripts writes all helper scripts to the codespace in a single SSH session.
-func prepareCodespaceScripts(ctx context.Context, codespaceName string, hasBrowserService, hasNotificationService bool) error {
-	script := buildCodespacePreparationScript(hasBrowserService, hasNotificationService)
+func prepareCodespaceScripts(ctx context.Context, codespaceName string, hasBrowserService, hasNotificationService bool, terminalTools map[terminalToolID]detectedTerminalTool) error {
+	script := buildCodespacePreparationScript(hasBrowserService, hasNotificationService, terminalTools)
 	commandOutput, err := runCodespaceBashScript(ctx, codespaceName, script)
 	if err != nil {
 		return fmt.Errorf("error preparing scripts: %w\nCommand output: %s", err, commandOutput)
@@ -301,7 +317,7 @@ func prepareCodespaceScripts(ctx context.Context, codespaceName string, hasBrows
 }
 
 // buildCodespacePreparationScript returns the remote setup script sent over stdin.
-func buildCodespacePreparationScript(hasBrowserService, hasNotificationService bool) string {
+func buildCodespacePreparationScript(hasBrowserService, hasNotificationService bool, tools map[terminalToolID]detectedTerminalTool) string {
 	var cmdParts []string
 
 	cmdParts = append(cmdParts,
@@ -351,6 +367,10 @@ func buildCodespacePreparationScript(hasBrowserService, hasNotificationService b
 	// xdg-open wrapper (always uploaded; handles its own fallbacks)
 	xdgB64 := base64.StdEncoding.EncodeToString([]byte(xdgOpenScript))
 	cmdParts = append(cmdParts, fmt.Sprintf("printf %%s %s | base64 -d > \"$stage_dir/xdg-open.sh\"", xdgB64))
+	if len(tools) > 0 {
+		terminalShimB64 := base64.StdEncoding.EncodeToString([]byte(terminalToolShimScript))
+		cmdParts = append(cmdParts, fmt.Sprintf("printf %%s %s | base64 -d > \"$stage_dir/terminal-tool-shim.sh\"", terminalShimB64))
+	}
 
 	chmodFiles := "$stage_dir/ado-auth-helper $stage_dir/azure-auth-helper $stage_dir/port-monitor.sh $stage_dir/xdg-open.sh"
 	if hasBrowserService {
@@ -358,6 +378,9 @@ func buildCodespacePreparationScript(hasBrowserService, hasNotificationService b
 	}
 	if hasNotificationService {
 		chmodFiles += " $stage_dir/notification-sender.sh"
+	}
+	if len(tools) > 0 {
+		chmodFiles += " $stage_dir/terminal-tool-shim.sh"
 	}
 	cmdParts = append(cmdParts, "chmod +x "+chmodFiles)
 	cmdParts = append(cmdParts,
@@ -380,6 +403,11 @@ func buildCodespacePreparationScript(hasBrowserService, hasNotificationService b
 		"(test -L /usr/local/bin/azure-auth-helper || sudo ln -sf ~/azure-auth-helper /usr/local/bin/azure-auth-helper)")
 	cmdParts = append(cmdParts,
 		"(test -L /usr/local/bin/xdg-open || sudo ln -sf ~/xdg-open.sh /usr/local/bin/xdg-open)")
+	for _, name := range terminalToolRemoteNames(tools) {
+		cmdParts = append(cmdParts,
+			fmt.Sprintf(`destination="/usr/local/bin/%s"; if ( [ -e "$destination" ] || [ -L "$destination" ] ) && ! sudo grep -Fqx %s "$destination" 2>/dev/null; then echo '%s exists and is not managed by gh-ado-codespaces; not replacing it' >&2; else sudo rm -f "$destination"; sudo install -m 0755 "$stage_dir/terminal-tool-shim.sh" "$destination"; fi`, name, quoteForShell(terminalToolShimMarker), name),
+		)
+	}
 
 	// Clean up stale sockets
 	if cleanupCmd := buildStaleSocketCleanupCommand(hasBrowserService, hasNotificationService); cleanupCmd != "" {

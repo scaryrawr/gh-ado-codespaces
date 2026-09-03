@@ -103,7 +103,7 @@ func generateCodespaceSSHConfig(ctx context.Context, args *CommandLineArgs) (str
 	return stdout.String(), nil
 }
 
-func setupHerdrSSHConfig(ctx context.Context, codespaceName string, args *CommandLineArgs, serverConfig *ServerConfig, browserService *BrowserService, notificationService *NotificationService) (string, func(), error) {
+func setupHerdrSSHConfig(ctx context.Context, codespaceName string, args *CommandLineArgs, serverConfig *ServerConfig, browserService *BrowserService, notificationService *NotificationService, extraForwards ...remoteForward) (string, func(), error) {
 	if err := validateSSHHostAlias(codespaceName); err != nil {
 		return "", nil, err
 	}
@@ -120,7 +120,7 @@ func setupHerdrSSHConfig(ctx context.Context, codespaceName string, args *Comman
 
 	herdrHostAlias := buildHerdrSSHHostAlias(codespaceName, sessionID)
 	paths := newHerdrSSHConfig(homeDir, codespaceName, sessionID)
-	sessionConfig, err := buildHerdrSessionConfig(generatedConfig, herdrHostAlias, serverConfig, browserService, notificationService)
+	sessionConfig, err := buildHerdrSessionConfig(generatedConfig, herdrHostAlias, serverConfig, browserService, notificationService, extraForwards...)
 	if err != nil {
 		return "", nil, err
 	}
@@ -171,7 +171,7 @@ func validateSSHHostAlias(alias string) error {
 	return nil
 }
 
-func buildHerdrSessionConfig(generatedConfig, herdrHostAlias string, serverConfig *ServerConfig, browserService *BrowserService, notificationService *NotificationService) (string, error) {
+func buildHerdrSessionConfig(generatedConfig, herdrHostAlias string, serverConfig *ServerConfig, browserService *BrowserService, notificationService *NotificationService, extraForwards ...remoteForward) (string, error) {
 	aliasedConfig, err := replaceGeneratedSSHHostAlias(generatedConfig, herdrHostAlias)
 	if err != nil {
 		return "", err
@@ -183,7 +183,7 @@ func buildHerdrSessionConfig(generatedConfig, herdrHostAlias string, serverConfi
 		config.WriteString("\n")
 	}
 	fmt.Fprintf(&config, "\nHost %s\n", herdrHostAlias)
-	for _, forward := range buildRemoteForwards(serverConfig.SocketPath, serverConfig.Port, browserService, notificationService) {
+	for _, forward := range buildRemoteForwards(serverConfig.SocketPath, serverConfig.Port, browserService, notificationService, extraForwards...) {
 		fmt.Fprintf(&config, "  RemoteForward %s %s\n", forward.remote, forward.local)
 	}
 

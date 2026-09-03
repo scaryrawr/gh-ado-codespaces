@@ -146,10 +146,10 @@ func (args *CommandLineArgs) BuildGHFlags() []string {
 }
 
 // BuildSSHArgs builds the arguments for the SSH command
-func (args *CommandLineArgs) BuildSSHArgs(socketPath string, port int, browserService *BrowserService, notificationService *NotificationService) []string {
+func (args *CommandLineArgs) BuildSSHArgs(socketPath string, port int, browserService *BrowserService, notificationService *NotificationService, extraForwards ...remoteForward) []string {
 	sshArgs := []string{"--"} // Start with the separator
 
-	for _, forward := range buildRemoteForwards(socketPath, port, browserService, notificationService) {
+	for _, forward := range buildRemoteForwards(socketPath, port, browserService, notificationService, extraForwards...) {
 		sshArgs = append(sshArgs, "-R", forward.argument())
 	}
 
@@ -174,7 +174,7 @@ func (forward remoteForward) argument() string {
 	return forward.remote + ":" + forward.local
 }
 
-func buildRemoteForwards(socketPath string, port int, browserService *BrowserService, notificationService *NotificationService) []remoteForward {
+func buildRemoteForwards(socketPath string, port int, browserService *BrowserService, notificationService *NotificationService, extraForwards ...remoteForward) []remoteForward {
 	forwards := []remoteForward{{
 		remote: socketPath,
 		local:  fmt.Sprintf("%s:%d", localServiceHost, port),
@@ -193,6 +193,8 @@ func buildRemoteForwards(socketPath string, port int, browserService *BrowserSer
 			local:  fmt.Sprintf("%s:%d", localServiceHost, notificationService.Port),
 		})
 	}
+
+	forwards = append(forwards, extraForwards...)
 
 	boundForwards := GetBoundReverseForwards()
 	if len(boundForwards) > 0 {

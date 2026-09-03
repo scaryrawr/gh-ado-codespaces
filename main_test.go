@@ -310,7 +310,7 @@ func TestBuildCodespaceBashStdinArgs(t *testing.T) {
 }
 
 func TestBuildCodespacePreparationScript(t *testing.T) {
-	script := buildCodespacePreparationScript(true, true)
+	script := buildCodespacePreparationScript(true, true, nil)
 
 	expectedSnippets := []string{
 		"set -e\n",

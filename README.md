@@ -10,7 +10,8 @@ When working with GitHub Codespaces and Azure DevOps services, authentication ca
 2. Automatically detecting and forwarding application ports from your codespace to your local machine
 3. Enabling browser opening from your codespace to your local browser
 4. Providing command completion notifications to your local desktop
-5. Providing a seamless development experience with GitHub Codespaces and Azure DevOps
+5. Opening supported terminal tools on your local machine from a Codespace
+6. Providing a seamless development experience with GitHub Codespaces and Azure DevOps
 
 ## Requirements
 
@@ -170,6 +171,7 @@ You can create or update this setting directly from the command line by supplyin
 | [Browser Opening](docs/browser-opening.md) | Opens URLs from your codespace in your local browser |
 | [Notifications](docs/notifications.md) | Desktop notifications when long-running commands finish |
 | [Port Forwarding](docs/port-forwarding.md) | Automatic bi-directional port forwarding (including local AI services) |
+| [Terminal tools](docs/terminal-tools.md) | Opens supported local terminal tools from the Codespace |
 | [xdg-open shim](#xdg-open-shim) | Intelligent file and URL opener for SSH / tmux environments |
 
 ### xdg-open shim

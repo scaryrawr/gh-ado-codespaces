@@ -378,9 +378,7 @@ func TestPrepareCodespaceScripts(t *testing.T) {
 	// Test that the function signature is correct and callable
 	// The actual execution would require a real codespace
 	t.Run("function_signature", func(t *testing.T) {
-		// Verify function exists and has correct signature
-		// by attempting to reference it (compilation check)
-		var f func(context.Context, string, bool, bool) error = prepareCodespaceScripts
+		var f func(context.Context, string, bool, bool, map[terminalToolID]detectedTerminalTool) error = prepareCodespaceScripts
 		if f == nil {
 			t.Error("prepareCodespaceScripts function should be defined")
 		}
