@@ -17,6 +17,7 @@ cwd=$(pwd -P)
 body=$(mktemp)
 capable=$(mktemp)
 trap 'rm -f "$body" "$capable"' EXIT
+socket_dir=$(cd /tmp && pwd -P)
 
 while IFS= read -r socket; do
   status=$(
@@ -30,7 +31,7 @@ while IFS= read -r socket; do
     printf '%s\n' "$socket" >> "$capable"
   fi
 done < <(
-  find -L /tmp -maxdepth 1 -name 'gh-ado-terminal-*.sock' -type s \
+  find "$socket_dir" -maxdepth 1 -name 'gh-ado-terminal-*.sock' -type s \
     -exec ls -t {} + 2>/dev/null
 )
 

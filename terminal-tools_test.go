@@ -448,6 +448,41 @@ func TestTerminalShimRejectsAmbiguousSessions(t *testing.T) {
 	}
 }
 
+func TestTerminalShimIgnoresSocketSymlinks(t *testing.T) {
+	binDir := t.TempDir()
+	output := filepath.Join(t.TempDir(), "argv")
+	t.Setenv("OUTPUT", output)
+	t.Setenv("STDIN_OUTPUT", output+".stdin")
+	writeShim(t, binDir, "terminal-browser")
+	tools := map[terminalToolID]detectedTerminalTool{
+		terminalBrowserTool: {
+			spec:       terminalToolCatalog[0],
+			executable: writeFakeTerminalTool(t, binDir, "local-terminal-browser"),
+		},
+	}
+	service, err := newTerminalToolService(context.Background(), tools, sshRoute{
+		alias:      "codespace--tool",
+		configPath: "/tmp/tool.conf",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer service.Stop()
+	stopBridge := startTerminalSocketBridge(t, service.SocketPath, service.Port)
+	defer stopBridge()
+
+	spoof := filepath.Join(os.TempDir(), "gh-ado-terminal-"+fmt.Sprint(time.Now().UnixNano())+".sock")
+	if err := os.Symlink(service.SocketPath, spoof); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(spoof)
+
+	command := exec.Command(filepath.Join(binDir, "terminal-browser"), "localhost:3000")
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("terminal shim followed a socket symlink: %v\n%s", err, output)
+	}
+}
+
 func TestTerminalToolServiceRedactsLocalLaunchErrors(t *testing.T) {
 	privatePath := filepath.Join(t.TempDir(), "private-terminal-browser")
 	tools := map[terminalToolID]detectedTerminalTool{
