@@ -314,17 +314,29 @@ func TestBuildCodespacePreparationScript(t *testing.T) {
 
 	expectedSnippets := []string{
 		"set -e\n",
+		`exec 9>"$HOME/.gh-ado-codespaces.publish.lock"`,
+		`flock 9`,
+		`stage_dir=$(mktemp -d "$HOME/.gh-ado-codespaces.XXXXXX")`,
+		`trap 'rm -rf "$stage_dir"' EXIT`,
 		"existing_node=$(sed -n '1s/^#!//p' ~/ado-auth-helper)",
 		"\"$existing_node\" -e 'process.exit(0)'",
 		"auth_helper_node=$(command -v node || true)",
-		"printf '#!%s\\n' \"$auth_helper_node\" > ~/ado-auth-helper",
-		"base64 -d >> ~/ado-auth-helper",
-		"cp ~/ado-auth-helper ~/azure-auth-helper",
-		"> ~/port-monitor.sh",
-		"> ~/browser-opener.sh",
-		"> ~/notification-sender.sh",
-		"> ~/xdg-open.sh",
-		"chmod +x ~/ado-auth-helper ~/azure-auth-helper ~/port-monitor.sh ~/xdg-open.sh ~/browser-opener.sh ~/notification-sender.sh",
+		`printf '#!%s\n' "$auth_helper_node" > "$stage_dir/ado-auth-helper"`,
+		`base64 -d >> "$stage_dir/ado-auth-helper"`,
+		`cp "$stage_dir/ado-auth-helper" "$stage_dir/azure-auth-helper"`,
+		`> "$stage_dir/port-monitor.sh"`,
+		`> "$stage_dir/browser-opener.sh"`,
+		`> "$stage_dir/notification-sender.sh"`,
+		`> "$stage_dir/xdg-open.sh"`,
+		"chmod +x $stage_dir/ado-auth-helper $stage_dir/azure-auth-helper $stage_dir/port-monitor.sh $stage_dir/xdg-open.sh $stage_dir/browser-opener.sh $stage_dir/notification-sender.sh",
+		`mv "$stage_dir/ado-auth-helper" ~/ado-auth-helper`,
+		`mv "$stage_dir/azure-auth-helper" ~/azure-auth-helper`,
+		`mv "$stage_dir/port-monitor.sh" ~/port-monitor.sh`,
+		`mv "$stage_dir/browser-opener.sh" ~/browser-opener.sh`,
+		`mv "$stage_dir/notification-sender.sh" ~/notification-sender.sh`,
+		`mv "$stage_dir/xdg-open.sh" ~/xdg-open.sh`,
+		`trap - EXIT`,
+		`rmdir "$stage_dir"`,
 		"sudo ln -sf ~/ado-auth-helper /usr/local/bin/ado-auth-helper",
 		"sudo ln -sf ~/azure-auth-helper /usr/local/bin/azure-auth-helper",
 		"sudo ln -sf ~/xdg-open.sh /usr/local/bin/xdg-open",
@@ -335,6 +347,18 @@ func TestBuildCodespacePreparationScript(t *testing.T) {
 	for _, snippet := range expectedSnippets {
 		if !strings.Contains(script, snippet) {
 			t.Errorf("Expected setup script to contain %q", snippet)
+		}
+	}
+	for _, target := range []string{
+		"> ~/ado-auth-helper",
+		"> ~/azure-auth-helper",
+		"> ~/port-monitor.sh",
+		"> ~/browser-opener.sh",
+		"> ~/notification-sender.sh",
+		"> ~/xdg-open.sh",
+	} {
+		if strings.Contains(script, target) {
+			t.Errorf("setup script writes directly to %q", target)
 		}
 	}
 }
