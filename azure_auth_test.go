@@ -1,10 +1,13 @@
 package main
 
 import (
+	"bufio"
 	"context"
+	"encoding/json"
 	"net"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -109,4 +112,57 @@ func TestNewAuthLogRestrictsPermissions(t *testing.T) {
 	if permissions := fileInfo.Mode().Perm(); permissions != 0600 {
 		t.Fatalf("auth log file permissions = %04o, want 0600", permissions)
 	}
+}
+
+func TestHandleConnectionForwardsMultipleScopes(t *testing.T) {
+	serverConnection, clientConnection := net.Pipe()
+	provider := &recordingTokenProvider{token: "test-token"}
+	done := make(chan struct{})
+	go func() {
+		handleConnection(context.Background(), serverConnection, provider, &authLog{})
+		close(done)
+	}()
+
+	request := `{"type":"getAccessToken","data":{"scopes":"scope-a scope-b"}}` + "\f"
+	if _, err := clientConnection.Write([]byte(request)); err != nil {
+		t.Fatal(err)
+	}
+
+	responseFrame, err := bufio.NewReader(clientConnection).ReadString('\f')
+	if err != nil {
+		t.Fatal(err)
+	}
+	var response TokenResponse
+	if err := json.Unmarshal([]byte(responseFrame[:len(responseFrame)-1]), &response); err != nil {
+		t.Fatal(err)
+	}
+	if response.Type != "accessToken" || response.Data != "test-token" {
+		t.Fatalf("response = %#v, want access token response", response)
+	}
+	if provider.target.kind != tokenTargetScopes {
+		t.Fatalf("target kind = %v, want tokenTargetScopes", provider.target.kind)
+	}
+	if want := []string{"scope-a", "scope-b"}; !reflect.DeepEqual(provider.target.values, want) {
+		t.Fatalf("target values = %v, want %v", provider.target.values, want)
+	}
+
+	if err := clientConnection.Close(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("handleConnection did not stop after the client closed")
+	}
+}
+
+type recordingTokenProvider struct {
+	target tokenTarget
+	token  string
+}
+
+func (p *recordingTokenProvider) GetAccessToken(_ context.Context, target tokenTarget) (string, error) {
+	p.target = target
+
+	return p.token, nil
 }
