@@ -36,6 +36,14 @@ func main() {
 		cancel()  // Propagate cancellation through the context.
 	}()
 
+	if isAgentServeCommand(os.Args[1:]) {
+		if err := runAgentServe(ctx); err != nil {
+			fmt.Fprintf(os.Stderr, "agent serve error: %s\n", redactSecrets(err.Error()))
+			os.Exit(1)
+		}
+		return
+	}
+
 	// Parse command line arguments
 	args := ParseArgs()
 
@@ -228,6 +236,10 @@ func main() {
 	gh.ExecInteractive(ctx, finalArgs...)
 }
 
+func isAgentServeCommand(args []string) bool {
+	return len(args) == 2 && args[0] == "agent" && args[1] == "serve"
+}
+
 // initializeSessionID creates a session ID including the codespace name
 func initializeSessionID(codespaceName string) {
 	timestamp := time.Now().Format("2006-01-02_150405")
@@ -293,6 +305,10 @@ func buildCodespacePreparationScript(hasBrowserService, hasNotificationService b
 	var cmdParts []string
 
 	cmdParts = append(cmdParts,
+		`exec 9>"$HOME/.gh-ado-codespaces.publish.lock"`,
+		`flock 9`,
+		`stage_dir=$(mktemp -d "$HOME/.gh-ado-codespaces.XXXXXX")`,
+		`trap 'rm -rf "$stage_dir"' EXIT`,
 		"auth_helper_node=",
 		"if [ -f ~/ado-auth-helper ]; then\n"+
 			"  existing_node=$(sed -n '1s/^#!//p' ~/ado-auth-helper)\n"+
@@ -309,45 +325,53 @@ func buildCodespacePreparationScript(hasBrowserService, hasNotificationService b
 	authB64 := base64.StdEncoding.EncodeToString([]byte(authHelperBody))
 	cmdParts = append(cmdParts,
 		fmt.Sprintf(
-			"printf '#!%%s\\n' \"$auth_helper_node\" > ~/ado-auth-helper && "+
-				"printf %%s %s | base64 -d >> ~/ado-auth-helper && "+
-				"cp ~/ado-auth-helper ~/azure-auth-helper",
+			"printf '#!%%s\\n' \"$auth_helper_node\" > \"$stage_dir/ado-auth-helper\" && "+
+				"printf %%s %s | base64 -d >> \"$stage_dir/ado-auth-helper\" && "+
+				"cp \"$stage_dir/ado-auth-helper\" \"$stage_dir/azure-auth-helper\"",
 			authB64,
 		))
 
 	// Base64-encode and write port monitor script
 	portB64 := base64.StdEncoding.EncodeToString([]byte(portMonitorScript))
 	cmdParts = append(cmdParts,
-		fmt.Sprintf("printf %%s %s | base64 -d > ~/port-monitor.sh", portB64))
+		fmt.Sprintf("printf %%s %s | base64 -d > \"$stage_dir/port-monitor.sh\"", portB64))
 
 	// Browser opener (only if browser service is available)
 	if hasBrowserService {
 		browserB64 := base64.StdEncoding.EncodeToString([]byte(browserOpenerScript))
-		cmdParts = append(cmdParts,
-			fmt.Sprintf("printf %%s %s | base64 -d > ~/browser-opener.sh", browserB64))
+		cmdParts = append(cmdParts, fmt.Sprintf("printf %%s %s | base64 -d > \"$stage_dir/browser-opener.sh\"", browserB64))
 	}
 
 	// Notification sender (only if notification service is available)
 	if hasNotificationService {
 		notifB64 := base64.StdEncoding.EncodeToString([]byte(notificationSenderScript))
-		cmdParts = append(cmdParts,
-			fmt.Sprintf("printf %%s %s | base64 -d > ~/notification-sender.sh", notifB64))
+		cmdParts = append(cmdParts, fmt.Sprintf("printf %%s %s | base64 -d > \"$stage_dir/notification-sender.sh\"", notifB64))
 	}
 
 	// xdg-open wrapper (always uploaded; handles its own fallbacks)
 	xdgB64 := base64.StdEncoding.EncodeToString([]byte(xdgOpenScript))
-	cmdParts = append(cmdParts,
-		fmt.Sprintf("printf %%s %s | base64 -d > ~/xdg-open.sh", xdgB64))
+	cmdParts = append(cmdParts, fmt.Sprintf("printf %%s %s | base64 -d > \"$stage_dir/xdg-open.sh\"", xdgB64))
 
-	// Make all scripts executable
-	chmodFiles := "~/ado-auth-helper ~/azure-auth-helper ~/port-monitor.sh ~/xdg-open.sh"
+	chmodFiles := "$stage_dir/ado-auth-helper $stage_dir/azure-auth-helper $stage_dir/port-monitor.sh $stage_dir/xdg-open.sh"
 	if hasBrowserService {
-		chmodFiles += " ~/browser-opener.sh"
+		chmodFiles += " $stage_dir/browser-opener.sh"
 	}
 	if hasNotificationService {
-		chmodFiles += " ~/notification-sender.sh"
+		chmodFiles += " $stage_dir/notification-sender.sh"
 	}
 	cmdParts = append(cmdParts, "chmod +x "+chmodFiles)
+	cmdParts = append(cmdParts,
+		`mv "$stage_dir/ado-auth-helper" ~/ado-auth-helper`,
+		`mv "$stage_dir/azure-auth-helper" ~/azure-auth-helper`,
+		`mv "$stage_dir/port-monitor.sh" ~/port-monitor.sh`,
+		`mv "$stage_dir/xdg-open.sh" ~/xdg-open.sh`,
+	)
+	if hasBrowserService {
+		cmdParts = append(cmdParts, `mv "$stage_dir/browser-opener.sh" ~/browser-opener.sh`)
+	}
+	if hasNotificationService {
+		cmdParts = append(cmdParts, `mv "$stage_dir/notification-sender.sh" ~/notification-sender.sh`)
+	}
 
 	// Create symlinks for auth helpers
 	cmdParts = append(cmdParts,
@@ -361,6 +385,7 @@ func buildCodespacePreparationScript(hasBrowserService, hasNotificationService b
 	if cleanupCmd := buildStaleSocketCleanupCommand(hasBrowserService, hasNotificationService); cleanupCmd != "" {
 		cmdParts = append(cmdParts, cleanupCmd)
 	}
+	cmdParts = append(cmdParts, `trap - EXIT`, `rmdir "$stage_dir"`)
 
 	return "set -e\n" + strings.Join(cmdParts, "\n") + "\n"
 }

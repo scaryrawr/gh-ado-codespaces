@@ -8,6 +8,8 @@ require (
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/cli/go-gh/v2 v2.13.0
 	github.com/gen2brain/beeep v0.11.2
+	github.com/github/copilot-sdk/go v1.0.11
+	github.com/gofrs/flock v0.12.1
 	github.com/google/uuid v1.6.0
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c
 )
@@ -25,11 +27,16 @@ require (
 	github.com/cli/safeexec v1.0.1 // indirect
 	github.com/clipperhouse/displaywidth v0.10.0 // indirect
 	github.com/clipperhouse/uax29/v2 v2.6.0 // indirect
+	github.com/coder/websocket v1.8.15 // indirect
+	github.com/ebitengine/purego v0.10.1 // indirect
 	github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f // indirect
 	github.com/esiqveland/notify v0.13.3 // indirect
+	github.com/go-logr/logr v1.4.3 // indirect
+	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/golang-jwt/jwt/v5 v5.3.1 // indirect
+	github.com/google/jsonschema-go v0.4.2 // indirect
 	github.com/jackmordaunt/icns/v3 v3.0.1 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/lucasb-eyer/go-colorful v1.3.0 // indirect
@@ -45,6 +52,10 @@ require (
 	github.com/sergeymakinen/go-ico v1.0.0 // indirect
 	github.com/tadvi/systray v0.0.0-20190226123456-11a2b8fa57af // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
+	go.opentelemetry.io/auto/sdk v1.1.0 // indirect
+	go.opentelemetry.io/otel v1.35.0 // indirect
+	go.opentelemetry.io/otel/metric v1.35.0 // indirect
+	go.opentelemetry.io/otel/trace v1.35.0 // indirect
 	golang.org/x/crypto v0.52.0 // indirect
 	golang.org/x/net v0.55.0 // indirect
 	golang.org/x/sys v0.45.0 // indirect
