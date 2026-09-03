@@ -117,6 +117,18 @@ func TestTerminalToolPlans(t *testing.T) {
 			wantErr: true,
 		},
 		{
+			name:    "terminal-browser rejects URL userinfo",
+			plan:    planTerminalBrowser,
+			request: remoteInvocation{cwd: "/work", argv: []string{"https://good.example@evil.example"}},
+			wantErr: true,
+		},
+		{
+			name:    "terminal-browser rejects host userinfo",
+			plan:    planTerminalBrowser,
+			request: remoteInvocation{cwd: "/work", argv: []string{"good.example@evil.example/path"}},
+			wantErr: true,
+		},
+		{
 			name:    "tode resolves a relative remote path",
 			plan:    planTerminalCode,
 			request: remoteInvocation{cwd: "/work/app", argv: []string{"src/../main.go", "--split", "left"}},
@@ -409,6 +421,43 @@ func TestTerminalToolServiceRejectsInvalidRequest(t *testing.T) {
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusMethodNotAllowed {
 		t.Fatalf("GET status = %d, want %d", response.StatusCode, http.StatusMethodNotAllowed)
+	}
+}
+
+func TestTerminalToolServiceAcceptsContentTypeParameters(t *testing.T) {
+	tools := map[terminalToolID]detectedTerminalTool{
+		terminalBrowserTool: {
+			spec:       terminalToolCatalog[0],
+			executable: writeFakeTerminalTool(t, t.TempDir(), "terminal-browser"),
+		},
+	}
+	t.Setenv("OUTPUT", filepath.Join(t.TempDir(), "argv"))
+	t.Setenv("STDIN_OUTPUT", filepath.Join(t.TempDir(), "stdin"))
+	service, err := newTerminalToolService(context.Background(), tools, sshRoute{
+		alias:      "codespace--tool",
+		configPath: "/tmp/tool.conf",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer service.Stop()
+
+	request, err := http.NewRequest(
+		http.MethodPost,
+		fmt.Sprintf("http://%s:%d/v1/launch/terminal-browser", localServiceHost, service.Port),
+		bytes.NewReader([]byte("/work\x00localhost:3000\x00")),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("Content-Type", terminalToolContentType+"; charset=utf-8")
+	response, err := (&http.Client{Timeout: time.Second}).Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusNoContent {
+		t.Fatalf("parameterized Content-Type status = %d, want %d", response.StatusCode, http.StatusNoContent)
 	}
 }
 

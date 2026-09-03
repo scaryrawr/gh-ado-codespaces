@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net"
 	"net/http"
 	"net/url"
@@ -264,7 +265,9 @@ func (service *terminalToolService) Stop() {
 	defer shutdownCancel()
 	_ = service.server.Shutdown(shutdownCtx)
 	service.wg.Wait()
-	cleanupSocketFile(service.SocketPath)
+	if err := os.Remove(service.SocketPath); err != nil && !os.IsNotExist(err) {
+		logDebug("Failed to remove terminal tool socket %s: %v", service.SocketPath, err)
+	}
 	if service.route.configPath != "" {
 		if err := os.Remove(service.route.configPath); err != nil && !os.IsNotExist(err) {
 			logDebug("Failed to remove terminal tool SSH config %s: %v", service.route.configPath, err)
@@ -277,7 +280,8 @@ func (service *terminalToolService) handleLaunch(w http.ResponseWriter, request 
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if request.Header.Get("Content-Type") != terminalToolContentType {
+	contentType, _, err := mime.ParseMediaType(request.Header.Get("Content-Type"))
+	if err != nil || !strings.EqualFold(contentType, terminalToolContentType) {
 		http.Error(w, "invalid content type", http.StatusUnsupportedMediaType)
 		return
 	}
@@ -519,7 +523,7 @@ func normalizeNetworkTarget(value string) (string, error) {
 	}
 	if strings.Contains(value, "://") {
 		parsed, err := url.ParseRequestURI(value)
-		if err != nil || parsed.Host == "" || parsed.Scheme != "http" && parsed.Scheme != "https" {
+		if err != nil || parsed.Host == "" || parsed.User != nil || parsed.Scheme != "http" && parsed.Scheme != "https" {
 			return "", fmt.Errorf("unsupported terminal-browser target %q", value)
 		}
 
@@ -542,7 +546,7 @@ func normalizeNetworkTarget(value string) (string, error) {
 		scheme = "http"
 	}
 	parsed, err := url.ParseRequestURI(scheme + "://" + value)
-	if err != nil || parsed.Host == "" {
+	if err != nil || parsed.Host == "" || parsed.User != nil {
 		return "", fmt.Errorf("unsupported terminal-browser target %q", value)
 	}
 
