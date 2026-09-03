@@ -94,6 +94,27 @@ gh ado-codespaces --herdr --repo owner/repository
 gh ado-codespaces --herdr --codespace codespace-name
 ```
 
+### Copilot agent supervisor
+
+`gh ado-codespaces agent serve` starts an NDJSON supervisor on stdin and stdout. Local Copilot extensions and other clients can use it to manage Copilot agents inside Codespaces.
+
+The supervisor supports these operations:
+
+- List, inspect, start, and stop Codespaces.
+- Start one or more remote Copilot agents.
+- Send prompts and receive ordered agent events.
+- Inspect and stop each agent without stopping its Codespace.
+
+Each agent holds a cross-process lease for its Codespace and working directory. A second supervisor cannot start another agent in the same location until the first agent stops.
+
+Agent mode requires the Copilot CLI in the Codespace. Your GitHub CLI token also needs the `codespace` scope:
+
+```fish
+gh auth refresh -h github.com -s codespace
+```
+
+Protocol stdout contains NDJSON only. Diagnostics use stderr. Clients must send a `shutdown` request before closing the process.
+
 ### X11 Tunneling
 
 When the host has a non-empty `DISPLAY` environment variable, interactive sessions automatically add trusted X11 forwarding with `-Y`. Trusted forwarding lets codespace applications access the local X server, so use it only with codespaces you trust. Install and start an X11 server on the host first (for example, XQuartz on macOS).
